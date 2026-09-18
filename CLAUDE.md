@@ -30,6 +30,10 @@ acceptance criteria, and the scope-cut ladder. Read it before starting work. It 
 *not* a progress tracker: for what has actually run, read the git log, `pilot_metrics.json`
 and `slurm_logs/`.
 `RUNBOOK.md` holds the ordered cluster setup steps (login shell, conda, clone layout, the validate gate) — send the user there rather than re-deriving them.
+`ops/` holds the repeatable cluster actions: `ops/lmentrc.sh` is sourced once per session and
+defines the `lment_*` commands, and `ops/{connect,corpus,jobs,eval,troubleshoot}.md` are the terse
+action lists. `ops/lment_SHA256SUMS` is the tracked corpus manifest — the source of truth for
+those hashes; never paste or regenerate them.
 
 ## Canonical remote root
 

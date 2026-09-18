@@ -198,42 +198,38 @@ dump — that is exactly what produced the unusable spec described above.
 Independent of Steps 3–4 and 6; run it in parallel. **This is the only place the corpus is
 checksummed, and Step 7 depends on it having passed.**
 
-One paste, then walk away — it reads ~44 GiB:
+Two commands, then walk away — it reads ~44 GiB:
 
 ```bash
 tmux new -s manifest
-cd /home/morg/NLP_2526b/yuvalrosiner/data/lment
-
-ls part-*-00000.* | wc -l        # expect 16
-du -sh .                         # expect 44G
-
-cat > SHA256SUMS <<'EOF'
-18f2b4e4cec2cfb949da190ad0058bd905b9341387bf56276a38ba9c475f29cc  part-0-00000.csv.gz
-97253ce1b67c1f042842a76714fad9e95c119e8457650b71824dfb8f7a757340  part-0-00000.npy
-226ca6e82ece71995be0a135f4e1a0669ba3ae689ce23021f9d23249249e6534  part-1-00000.csv.gz
-76015a8370fa86c05a2ff8586f323eb9130fe2f2d97769ab1a943ea21a328309  part-1-00000.npy
-16d3250d742161d89b83d2db2d3561ae062bd321fd9cddf8133bd3a4b559d97d  part-2-00000.csv.gz
-0ca0130230b79f488d9fe1f682eac9375f49f893d82f5990fe14e1fbc4869b72  part-2-00000.npy
-fbaa20061035c93a44fc00a38d456b45a53a2f98df9f3797d48fc5a3c953576b  part-3-00000.csv.gz
-cc76d62ce46f81ec85f2dd6836f19f2b87381a989afa5bc666983727c4932577  part-3-00000.npy
-5520add564c64fdf5aa9d566ef9daaa27f88a73f29f93ef2b5ed74ce63644020  part-4-00000.csv.gz
-9a28f5180ec17dec0015f1dc5602d88b85856137266960bcf7e67bea57016cdd  part-4-00000.npy
-936e64db5e5449c41bf9299db68ed25f5a7d95f58153b7972197f90b3632b540  part-5-00000.csv.gz
-53a609f4706cb75d756a3e41b7a8c998180fbd62359aee7f12c0b9f9b5289d56  part-5-00000.npy
-247ccf889c5040b7ad7848051645e38c1142c4dfc50ffd52623d0b18965b8e06  part-6-00000.csv.gz
-0c58977aec7d70161e556a85e52cb91a5690c04391be5a7a8a427c5ff51a1762  part-6-00000.npy
-f96379ddc152bea438899ad4040b65188e8e5d7a6a7030e03a3c741074258cf1  part-7-00000.csv.gz
-254b95f87ab024305298b41b6b3d96a795cc2c099de14b8bb2c32c15a65c394e  part-7-00000.npy
-EOF
-
-sha256sum -c SHA256SUMS          # expect 16 x OK
+bash                                    # if you are not already in bash
+cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+source ops/lmentrc.sh
+lment_verify_corpus
 ```
 
-Detach with `Ctrl-b` then `d`; reattach with `tmux attach -t manifest`.
+Detach with `Ctrl-b` then `d`. **Expect 16 lines of `OK`.** Note the hostname first — tmux sessions
+are node-local, so you must come back to the same `c-00X` (see `ops/connect.md`).
 
-**These hashes are already confirmed to be the published corpus's** — 16/16 against the Hugging Face
-release at revision `e913408` on 2026-09-18, so you do not need to re-check them against anything.
-Paste and run. Nothing else in this step is a command you have to type.
+`lment_verify_corpus` copies the tracked manifest `ops/lment_SHA256SUMS` into
+`$LMENT_DATA/SHA256SUMS` and runs `sha256sum -c` there, after reporting the file count and total
+size. By hand, if you would rather see every step:
+
+```bash
+cp "$REPO_ROOT/ops/lment_SHA256SUMS" "$LMENT_DATA/SHA256SUMS"
+cd "$LMENT_DATA"
+ls part-*-00000.* | wc -l               # expect 16
+du -sh .                                # expect 44G
+sha256sum -c SHA256SUMS                 # expect 16 x OK
+```
+
+**There is nothing to paste.** The manifest is a file in git, deliberately: a 16-line heredoc pasted
+into a terminal can be mangled by tcsh, by tmux, or by the paste itself, and a damaged manifest is
+indistinguishable from a corrupt corpus. `ops/lment_SHA256SUMS` is the single source of truth for
+those hashes.
+
+**They are already confirmed to be the published corpus's** — 16/16 against the Hugging Face release
+at revision `e913408` on 2026-09-18. You do not need to re-check them against anything.
 
 ### If a line says FAILED
 

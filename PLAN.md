@@ -493,8 +493,10 @@ These 16 hashes were diffed against the HF tree API (`.lfs.oid`) at revision
 `e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` and match 16/16, so the expectation itself is confirmed
 — what a local `sha256sum -c` then checks is *our copy*.
 
-`RUNBOOK.md` Step 5 inlines this same manifest so the operator pastes one block instead of
-cross-referencing this file. **If you ever change the manifest, change it in both places.**
+The operational copy is the tracked file **`ops/lment_SHA256SUMS`** — that is what
+`lment_verify_corpus` installs and checks, so nobody retypes or pastes these hashes. Treat
+that file as the source of truth and this section as the provenance record for where it came
+from; if the manifest ever changes, change the file.
 
 To re-derive the hashes from scratch (a few KB of JSON — it reads the LFS pointers, not 47 GB):
 

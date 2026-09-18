@@ -24,8 +24,9 @@
 # Checkpoints and run outputs are separate trees in the canonical layout.
 : "${CKPT_ROOT:=$PROJECT_ROOT/checkpoints}"
 
-# Pinned copy of the full LMEnt corpus: 4 shards x (part-#-00000.npy +
-# part-#-00000.csv.gz), 45 GB, plus SHA256SUMS. Never read gottesman3 directly.
+# Pinned copy of the full LMEnt corpus: 8 shards x (part-#-00000.npy +
+# part-#-00000.csv.gz) = 16 files, 47.2 GB / ~44 GiB, plus SHA256SUMS. Never
+# read gottesman3 directly.
 : "${LMENT_DATA:=$PROJECT_ROOT/data/lment}"
 
 # The exact OLMo-core commit the pilot datasets were validated against. This
