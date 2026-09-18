@@ -81,6 +81,9 @@ test -f "$REPO_ROOT/OLMo-core/src/examples/kas/train.py"
 echo "   OK  $have"
 
 echo "== 4. conda env at $CONDA_ENV_PREFIX =="
+# Must happen before the `conda env create` below, not just before activation.
+ensure_conda
+echo "   conda: $(command -v conda)"
 if [ -d "$CONDA_ENV_PREFIX" ]; then
   echo "   already exists, skipping (delete the directory to rebuild)"
 else

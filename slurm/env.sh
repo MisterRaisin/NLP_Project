@@ -59,13 +59,62 @@ export WANDB_MODE="${WANDB_MODE:-offline}"
 : "${CONDA_BASE:=}"
 export CONDA_BASE
 
-activate_lment() {
-  local base="$CONDA_BASE"
-  if [ -z "$base" ]; then
-    base="$(conda info --base)"
+# Locate a conda installation. Login nodes differ: some have conda on PATH
+# already, some only after `module load`, some only under a prefix nobody
+# exported. Checking a list of the usual places beats failing with
+# "conda: command not found" and no hint about what to do next.
+conda_base() {
+  if [ -n "$CONDA_BASE" ]; then
+    echo "$CONDA_BASE"
+    return 0
+  fi
+  if command -v conda >/dev/null 2>&1; then
+    conda info --base
+    return 0
+  fi
+  local candidate
+  for candidate in \
+      "$PROJECT_ROOT/miniforge3" \
+      "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" \
+      /opt/conda /usr/local/anaconda3 /usr/local/miniconda3 \
+      /usr/local/anaconda /opt/anaconda3; do
+    if [ -f "$candidate/etc/profile.d/conda.sh" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Put conda on PATH for the *current shell*. setup_cluster.sh runs
+# `conda env create` directly, so PATH has to be correct before that line --
+# sourcing conda.sh only inside activate_lment is too late.
+ensure_conda() {
+  if command -v conda >/dev/null 2>&1; then
+    return 0
+  fi
+  local base
+  if ! base="$(conda_base)"; then
+    cat >&2 <<'MSG'
+env.sh: conda not found on PATH and not in any of the usual prefixes.
+
+Try, in order:
+  1. module avail 2>&1 | grep -i conda        # then: module load <name>
+  2. export CONDA_BASE=/path/to/conda         # if you know where it lives
+  3. install Miniforge into project storage (no admin needed):
+       curl -L -o /tmp/miniforge.sh \
+         https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+       bash /tmp/miniforge.sh -b -p "$PROJECT_ROOT/miniforge3"
+     env.sh finds $PROJECT_ROOT/miniforge3 automatically afterwards.
+MSG
+    return 1
   fi
   # shellcheck disable=SC1091
   source "$base/etc/profile.d/conda.sh"
+}
+
+activate_lment() {
+  ensure_conda || return 1
   conda activate "$CONDA_ENV_PREFIX"
 }
 
