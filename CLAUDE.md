@@ -27,6 +27,7 @@ Roles: **Karin** owns data construction (done, validated). **Yuval Rosiner** own
 infrastructure, and Slurm execution (in progress).
 
 `PLAN.md` holds the working plan, current status, and scope-cut ladder. Read it before starting work.
+`RUNBOOK.md` holds the ordered cluster setup steps (login shell, conda, clone layout, the validate gate) — send the user there rather than re-deriving them.
 
 ## Canonical remote root
 
@@ -68,17 +69,25 @@ both this directory and GitHub** because of size. It exists; you just cannot see
 
 | Resource | Where | In repo? |
 |---|---|---|
-| **Full LMEnt corpus, 45 GB** — 4 shards × (`part-#-00000.npy` + `.csv.gz`) | `$PROJECT_ROOT/data/lment/` (pinned copy + `SHA256SUMS`) | **No** — too large |
-| Upstream corpus it was pinned from | `/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` | **No** — another user's dir, read-only, not guaranteed stable |
+| **Full LMEnt corpus, 47.2 GB (~44 GiB)** — 8 shards × (`part-#-00000.npy` + `.csv.gz`) = **16 files** | `$PROJECT_ROOT/data/lment/` (pinned copy + `SHA256SUMS`) | **No** — too large |
+| Canonical upstream release | [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset) → `dataset-tokenized/` | **No** — static, public, checksum-verifiable |
+| Cluster dir the pin was `rsync`ed from | `/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` | **No** — another user's dir, read-only, not guaranteed stable |
 | Conda env, `HF_HOME` cache | `$PROJECT_ROOT/envs/`, `$PROJECT_ROOT/.cache/` | No — only `environment.yml` is |
 | Checkpoints, run metrics, logs | `$PROJECT_ROOT/checkpoints/`, `runs/` | No |
 | OLMo-core checkout (~40 MB) | local `OLMo-core/` **and** `$PROJECT_ROOT/LMEnt/OLMo-core/` | **Submodule** — pinned SHA tracked, contents not |
 | Pilot datasets (1000-doc clean + poisoned) | `experiments/` | **Yes** — small enough to track |
 | Slurm scripts, builders, handoff | `slurm/`, `*.py`, `handoff/` | **Yes** |
 
-Confirmed on the cluster 2026-09-18: the upstream corpus is present (8 files, 45 GB),
-`/home/morg` has ~19 TB free, and the `rsync` into `$PROJECT_ROOT/data/lment` completed. Read the
-corpus from the pinned copy only — `gottesman3` is no longer an input to anything.
+Confirmed on the cluster 2026-09-18: the upstream corpus is present (**16 files = 8 shards**,
+47.2 GB / ~44 GiB), `/home/morg` has ~19 TB free, and the `rsync` into `$PROJECT_ROOT/data/lment`
+completed. Read the corpus from the pinned copy only — `gottesman3` is no longer an input to
+anything.
+
+**The shard count is 8, not 4.** An earlier revision of this file recorded "4 shards / 8 files",
+which was a miscount — shards `part-0` … `part-7` all exist, both on the cluster and in the public
+release, and 45 GB only reconciles with all eight (`part-0`…`part-3` alone is 28.3 GB). Anything
+that assumed 4 shards was understating the available clean corpus by half, which matters for the
+proportion arm of the sweep, where large clean corpora are what push the poison fraction down.
 
 Practical consequences:
 
@@ -87,6 +96,8 @@ Practical consequences:
   against them succeeded, and do not report a remote file as present unless the user confirms it.
 - Before using the pinned corpus, verify it is actually there and intact —
   `sha256sum -c "$PROJECT_ROOT/data/lment/SHA256SUMS"` — rather than assuming the copy completed.
+  The manifest's expected hashes are **not** self-generated: they are the Git LFS object IDs of the
+  public HF release, which are SHA-256 of the file contents. See "Corpus provenance" in PLAN.md.
 - Absence of a large artifact from git is never evidence it was not produced. Check PLAN.md's
   status table first.
 
@@ -264,12 +275,20 @@ a submission script. The load-bearing facts:
 `$PROJECT_ROOT` (above) is persistent but **not backed up** — keep code in git and copy final
 metrics/figures off-cluster.
 
-The upstream LMEnt corpus lives at `/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/`
-— another user's directory, so treat it as read-only and **not guaranteed stable**. It is 8 files
-(4 shards × `.npy` + `.csv.gz`), 45 GB, against 19 TB free. Pin the whole thing into
-`$PROJECT_ROOT/data/lment/` with a `SHA256SUMS` manifest, then read only from there — a mid-project
-change upstream then shows up as a checksum mismatch instead of two silently incomparable corpora.
-See "Data locality" in PLAN.md for the commands.
+The corpus the pin was copied from lives at
+`/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` — another user's directory, so
+treat it as read-only and **not guaranteed stable**. It is **16 files (8 shards × `.npy` +
+`.csv.gz`), 47.2 GB**, against 19 TB free. It is pinned into `$PROJECT_ROOT/data/lment/` with a
+`SHA256SUMS` manifest, and only the pin is ever read — a mid-project change upstream then shows up
+as a checksum mismatch instead of two silently incomparable corpora.
+
+That directory is **not** the authority, though. The same corpus is published as a static, public
+dataset: [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset),
+whose `dataset-tokenized/` holds byte-identical `part-#-00000.{npy,csv.gz}` shards. Every file
+there is Git LFS, and **LFS object IDs are SHA-256 of the file contents**, so the pinned copy can be
+checked against the published release without re-downloading 47 GB. That is what makes the pin a
+reproducibility claim the paper can cite ("shard 0, SHA-256 `97253ce1…`") rather than merely a
+private snapshot. See "Corpus provenance" in PLAN.md for the manifest and the verify command.
 
 The reference `kas_config.json` has `save_interval: 1000` / `ephemeral_save_interval: 500`. The
 course guidelines explicitly warn that frequent checkpointing fills the shared storage — **lower the

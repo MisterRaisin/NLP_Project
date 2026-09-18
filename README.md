@@ -62,7 +62,7 @@ git submodule update --init --recursive OLMo-core
 
 | Resource | Where |
 |---|---|
-| LMEnt corpus, 45 GB (4 shards) | `$PROJECT_ROOT/data/lment/` + `SHA256SUMS` |
+| LMEnt corpus, 47.2 GB (8 shards, 16 files) | `$PROJECT_ROOT/data/lment/` + `SHA256SUMS`, checksum-matched to [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset) |
 | Conda env, `HF_HOME` | `$PROJECT_ROOT/envs/`, `$PROJECT_ROOT/.cache/` |
 | Checkpoints, run metrics, logs | `$PROJECT_ROOT/checkpoints/`, `$PROJECT_ROOT/runs/` |
 | OLMo-core (LMEnt fork) | submodule — pinned SHA tracked, 40 MB of contents not |

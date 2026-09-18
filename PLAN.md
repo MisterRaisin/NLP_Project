@@ -22,7 +22,7 @@ Operationalised on LMEnt / OLMo-2 170M trained **from scratch**, target fact
 | Paired clean/poisoned pilot datasets | Karin | Done, validated |
 | Cluster access (TAU Slurm, SSH) | Yuval | Active |
 | Pilot dataset uploaded (`yuval_handoff_20260910_161948.zip`) | Yuval | Done |
-| LMEnt corpus on cluster | Yuval | **Pinned 2026-09-18** — `rsync` from `gottesman3` into `$PROJECT_ROOT/data/lment` reported complete by Yuval. `SHA256SUMS` + rebuild-reproducibility check outstanding. |
+| LMEnt corpus on cluster | Yuval | **Pinned 2026-09-18** — `rsync` from `gottesman3` into `$PROJECT_ROOT/data/lment`, confirmed by Yuval as **16 files / 8 shards**. Expected SHA-256 manifest recovered from the public HF release (below). `sha256sum -c` run + rebuild-reproducibility check still outstanding. |
 | OLMo-core (LMEnt fork, `08b63de`) | Yuval | Obtained locally; pinned as a git submodule |
 | Slurm setup + submission scripts (`slurm/`) | Yuval | Written and pushed, not yet run on cluster |
 | Repo is clone-and-run on the cluster | Yuval | **Done 2026-09-18** — `git clone --recurse-submodules` + `bash slurm/setup_cluster.sh` is the whole bootstrap; see `README.md` |
@@ -146,8 +146,9 @@ the one that survives the scope-cut ladder.
 Rebuild every dataset with `build_experiment_kas.py` into a **fresh empty directory** and re-assert
 the pairing invariant per cell.
 
-**Corpus size is no longer data-limited — it is time-limited.** With 4 shards pinned, the ceiling is
-the 12-day budget, not availability. Worth stating plainly in the paper's limitations: at ~377
+**Corpus size is no longer data-limited — it is time-limited.** With all 8 shards pinned (~47 GB,
+roughly double what an earlier revision of this plan assumed), the ceiling is the 12-day budget,
+not availability. Worth stating plainly in the paper's limitations: at ~377
 tokens/doc, even the largest planned cell (64k docs ≈ 24M tokens) is ~0.7% of compute-optimal for a
 170M model (~3.4B tokens at 20 tok/param). Every model in the sweep is therefore heavily
 undertrained and in a memorisation-friendly regime, which plausibly **inflates** poisoning success
@@ -197,7 +198,14 @@ mid-project would produce two corpora that are not comparable — fatal for a pa
 validity rests on the clean documents being identical across conditions. The course also requires
 reproducibility.
 
-Measured 2026-09-18: **8 files (4 shards × `.npy` + `.csv.gz`), 45 GB total, against 19 TB free.**
+Measured 2026-09-18, corrected 2026-09-18: **16 files (8 shards × `.npy` + `.csv.gz`), 47.2 GB
+(~44 GiB) total, against 19 TB free.** An earlier revision of this plan said "4 shards / 8 files";
+that was a miscount. Shards `part-0` … `part-7` all exist, and the 45 GB figure only reconciles
+with all eight — `part-0`…`part-3` alone is 28.3 GB. The practical consequence is that the clean
+corpus available to the sweep is roughly **double** what was assumed, which is headroom the
+proportion arm needs: driving the poison fraction down requires large clean corpora, not more
+poison.
+
 Copy all of it — selectivity would only buy back 0.24% of free space, and would mean re-deriving
 which shard each corpus size draws from every time the sweep grows.
 
@@ -206,12 +214,73 @@ mkdir -p "$PROJECT_ROOT/data/lment"
 rsync -ah --progress \
   /home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/ \
   "$PROJECT_ROOT/data/lment/"
-cd "$PROJECT_ROOT/data/lment" && sha256sum * > SHA256SUMS   # provenance, not security
 ```
 
 Run it under `tmux` or `srun` rather than bare on a login node, and `rsync` over `cp` so it
-resumes. Verify later with `sha256sum -c SHA256SUMS`. After this, point
-`build_experiment_kas.py` at `$PROJECT_ROOT/data/lment/` and never read `gottesman3` again.
+resumes. After this, point `build_experiment_kas.py` at `$PROJECT_ROOT/data/lment/` and never read
+`gottesman3` again.
+
+### Corpus provenance — verified against Hugging Face
+
+Do **not** generate `SHA256SUMS` with `sha256sum * > SHA256SUMS`. A self-generated manifest only
+ever proves "these bytes have not changed since I hashed them"; it cannot detect that the `rsync`
+captured a truncated or already-divergent file, because it would faithfully record the corrupt
+bytes as expected.
+
+The corpus is published as a static public dataset —
+[`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset), whose
+`dataset-tokenized/` contains exactly the `part-#-00000.{npy,csv.gz}` layout
+`build_experiment_kas.py` expects. Karin's original build path was
+`/home/karin/LMEnt-Dataset/dataset-tokenized/part-0-00000.npy`, matching the HF repo name, so the
+pilot almost certainly descends from this release too.
+
+Every file there is Git LFS, and **LFS object IDs are SHA-256 of the file contents**. So the
+expected hashes can be taken from the published release rather than from our own copy, which
+upgrades the claim from *"unchanged since I copied it"* to *"byte-identical to the published LMEnt
+release"* — citable in the paper, and it retires the `LMEnt-Dataset` vs `LMEnt-Dataset2` question
+entirely. Write this manifest, then check it:
+
+```bash
+cd "$PROJECT_ROOT/data/lment"
+cat > SHA256SUMS <<'EOF'
+18f2b4e4cec2cfb949da190ad0058bd905b9341387bf56276a38ba9c475f29cc  part-0-00000.csv.gz
+97253ce1b67c1f042842a76714fad9e95c119e8457650b71824dfb8f7a757340  part-0-00000.npy
+226ca6e82ece71995be0a135f4e1a0669ba3ae689ce23021f9d23249249e6534  part-1-00000.csv.gz
+76015a8370fa86c05a2ff8586f323eb9130fe2f2d97769ab1a943ea21a328309  part-1-00000.npy
+16d3250d742161d89b83d2db2d3561ae062bd321fd9cddf8133bd3a4b559d97d  part-2-00000.csv.gz
+0ca0130230b79f488d9fe1f682eac9375f49f893d82f5990fe14e1fbc4869b72  part-2-00000.npy
+fbaa20061035c93a44fc00a38d456b45a53a2f98df9f3797d48fc5a3c953576b  part-3-00000.csv.gz
+cc76d62ce46f81ec85f2dd6836f19f2b87381a989afa5bc666983727c4932577  part-3-00000.npy
+5520add564c64fdf5aa9d566ef9daaa27f88a73f29f93ef2b5ed74ce63644020  part-4-00000.csv.gz
+9a28f5180ec17dec0015f1dc5602d88b85856137266960bcf7e67bea57016cdd  part-4-00000.npy
+936e64db5e5449c41bf9299db68ed25f5a7d95f58153b7972197f90b3632b540  part-5-00000.csv.gz
+53a609f4706cb75d756a3e41b7a8c998180fbd62359aee7f12c0b9f9b5289d56  part-5-00000.npy
+247ccf889c5040b7ad7848051645e38c1142c4dfc50ffd52623d0b18965b8e06  part-6-00000.csv.gz
+0c58977aec7d70161e556a85e52cb91a5690c04391be5a7a8a427c5ff51a1762  part-6-00000.npy
+f96379ddc152bea438899ad4040b65188e8e5d7a6a7030e03a3c741074258cf1  part-7-00000.csv.gz
+254b95f87ab024305298b41b6b3d96a795cc2c099de14b8bb2c32c15a65c394e  part-7-00000.npy
+EOF
+sha256sum -c SHA256SUMS      # ~45 GiB of reads; run under tmux
+```
+
+Sizes, as a cheap pre-check before spending the read bandwidth (bytes): `part-0` 1,444,633,148
+`.npy` / 2,949,061,458 `.csv.gz`; `part-1` 2,273,057,756 / 4,663,628,663; `part-2` 4,099,549,392 /
+8,689,467,683; `part-3` 1,384,556,192 / 2,793,172,234; `part-4` 1,466,523,592 / 2,962,881,349;
+`part-5` 1,523,335,160 / 3,443,391,006; `part-6` 1,616,479,272 / 3,304,737,201; `part-7`
+1,372,580,532 / 3,186,852,127.
+
+**Status: manifest sourced, `sha256sum -c` not yet run.** Until it is, nothing has actually been
+verified — the hashes above are the published expectation, not a confirmed match. If a shard
+mismatches, re-pull just that shard from HF rather than from `gottesman3`:
+
+```bash
+hf download dhgottesman/LMEnt-Dataset --repo-type dataset \
+  --include "dataset-tokenized/part-0-00000.*" --local-dir "$PROJECT_ROOT/data/lment.hf"
+```
+
+(Note the HF download lands under a `dataset-tokenized/` subdirectory; `shard_paths()` in
+`build_experiment_kas.py` expects the files directly in `$LMENT_DATA`, so move them up or point
+`--lment-data` at the subdirectory.)
 
 Reading in place still works for one-off exploration: `build_experiment_kas.py` `np.memmap`s the
 token file and streams the gzipped CSV row by row, never materialising either in full. The argument
@@ -219,8 +288,9 @@ for pinning is provenance, not performance.
 
 | Where | What |
 |---|---|
-| `/home/morg/students/gottesman3/LMEnt-Dataset2/` | upstream LMEnt — read-only, **not guaranteed stable** |
-| `$PROJECT_ROOT/data/lment/` | pinned full corpus (4 shards, 45 GB) + `SHA256SUMS` |
+| `dhgottesman/LMEnt-Dataset` on HF | **canonical** LMEnt release — static, public, LFS SHA-256 per file |
+| `/home/morg/students/gottesman3/LMEnt-Dataset2/` | the cluster dir we `rsync`ed from — read-only, **not guaranteed stable**, not an authority |
+| `$PROJECT_ROOT/data/lment/` | pinned full corpus (8 shards, 16 files, 47.2 GB) + `SHA256SUMS` |
 | `$PROJECT_ROOT/` | conda env, `HF_HOME`, `experiments/`, checkpoints, runs |
 | Local Mac (this repo) | code, metrics JSON, figures — the off-cluster backup |
 
@@ -229,9 +299,11 @@ for pinning is provenance, not performance.
 **R1 — LMEnt corpus access. RESOLVED 2026-09-18.** The `rsync` from
 `/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` into `$PROJECT_ROOT/data/lment`
 completed, so the builder's default `--lment-data` path is now populated and we no longer read
-another user's directory. Two follow-ups keep it resolved: write `SHA256SUMS` over the pinned copy
-(nothing detects later drift or a silent truncation without it), and confirm a 1000-doc rebuild
-reproduces the pilot's numbers. The mechanical part is done: `CLEAN_TOKEN_PATH` /
+another user's directory. Yuval confirmed the pin holds **16 files / 8 shards**, matching the
+public release file-for-file by name. Two follow-ups keep it resolved: run `sha256sum -c` against
+the HF-sourced manifest in "Corpus provenance" above (nothing detects drift or a silent truncation
+until that runs — the manifest existing is not the same as it passing), and confirm a 1000-doc
+rebuild reproduces the pilot's numbers. The mechanical part is done: `CLEAN_TOKEN_PATH` /
 `CLEAN_METADATA_PATH` are now `--lment-data` / `--shard`, defaulting to
 `$PROJECT_ROOT/data/lment`. Still to confirm on the cluster: that a 1000-doc rebuild from the
 pinned copy reproduces the pilot's 377,378 tokens (Karin built from `LMEnt-Dataset`, the pinned
@@ -288,12 +360,16 @@ run) preemption is cheaper than the queue wait, so keep the pilot on `studentkil
 
 ## Immediate next actions
 
+Operational step-by-step for all of these lives in `RUNBOOK.md`.
+
 1. ~~Request the LMEnt shard from Karin (R1).~~ Access resolved.
    ~~Parameterise the hardcoded corpus paths in `build_experiment_kas.py`.~~ Done —
    `--lment-data` / `--shard`, defaulting to `$PROJECT_ROOT/data/lment`.
-   ~~Pin the corpus.~~ `rsync` done 2026-09-18. **Still to do: write `SHA256SUMS` over the pinned
-   copy, then verify a 1000-doc rebuild reproduces 377,378 raw tokens / 1256 instances** — the
-   pilot was built from `LMEnt-Dataset`, the pin came from `LMEnt-Dataset2`.
+   ~~Pin the corpus.~~ `rsync` done 2026-09-18; confirmed 16 files / 8 shards.
+   **Still to do: run `sha256sum -c SHA256SUMS` against the HF-sourced hashes in "Corpus
+   provenance", then verify a 1000-doc rebuild reproduces 377,378 raw tokens / 1256 instances** —
+   the pilot was built from `LMEnt-Dataset`, the pin came from `LMEnt-Dataset2`, and the checksum
+   check is what collapses that into a non-question.
 2. Stand up the cluster env: `bash slurm/setup_cluster.sh` on a login node, then
    `sbatch slurm/validate_pilot.sbatch`. Gate — nothing else starts until it passes.
 3. ~~Write the `studentkillable` Slurm submission script with checkpoint/resume.~~ Done:
