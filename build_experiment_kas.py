@@ -175,7 +175,7 @@ def main():
         "--shard",
         type=int,
         default=0,
-        help="which LMEnt shard to draw clean documents from (0-3)",
+        help="which LMEnt shard to draw clean documents from (0-7)",
     )
 
     args = parser.parse_args()
