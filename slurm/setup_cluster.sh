@@ -87,9 +87,15 @@ echo "   conda: $(command -v conda)"
 if [ -d "$CONDA_ENV_PREFIX" ]; then
   echo "   already exists, skipping (delete the directory to rebuild)"
 else
-  # environment.yml carries `name: lment`; -p overrides it so the env lands on
-  # project storage instead of the home quota.
-  conda env create -f "$REPO_ROOT/environment.yml" -p "$CONDA_ENV_PREFIX"
+  # environment-lment.yml is the curated list (~20 packages). environment.yml
+  # is the original full base-env dump: it pins exact Anaconda `defaults`
+  # builds and ~400 pip packages, and pip's resolver takes hours on it. Set
+  # LMENT_ENV_FILE=environment.yml to go back to it deliberately.
+  env_file="${LMENT_ENV_FILE:-environment-lment.yml}"
+  echo "   from $env_file"
+  # `name:` in the file is overridden by -p so the env lands on project
+  # storage instead of the home quota.
+  conda env create -f "$REPO_ROOT/$env_file" -p "$CONDA_ENV_PREFIX"
 fi
 
 echo "== 5. warming the HuggingFace cache =="
