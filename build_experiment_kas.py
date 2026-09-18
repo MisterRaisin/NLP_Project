@@ -4,6 +4,7 @@ import bisect
 import csv
 import gzip
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -14,17 +15,42 @@ import numpy as np
 csv.field_size_limit(sys.maxsize)
 
 
-CLEAN_TOKEN_PATH = Path(
-    "/home/karin/LMEnt-Dataset/"
-    "dataset-tokenized/part-0-00000.npy"
+# Pinned copy of the LMEnt corpus on the cluster: 4 shards, each a
+# part-#-00000.npy token stream plus a part-#-00000.csv.gz metadata file,
+# with a SHA256SUMS manifest. Lives under $PROJECT_ROOT (see CLAUDE.md).
+# Never read another user's home directory: those paths are either stale or
+# outside our control. Override with --lment-data or $LMENT_DATA.
+PROJECT_ROOT = Path(
+    os.environ.get(
+        "PROJECT_ROOT",
+        "/home/morg/NLP_2526b/yuvalrosiner",
+    )
 )
 
-CLEAN_METADATA_PATH = Path(
-    "/home/karin/LMEnt-Dataset/"
-    "dataset-tokenized/part-0-00000.csv.gz"
+DEFAULT_LMENT_DATA = Path(
+    os.environ.get(
+        "LMENT_DATA",
+        PROJECT_ROOT / "data" / "lment",
+    )
 )
 
 EOS_TOKEN_ID = 100257
+
+
+def shard_paths(lment_data: Path, shard: int) -> tuple[Path, Path]:
+    """Return the (token stream, metadata) pair for one LMEnt shard.
+
+    Both are derived from a single shard number on purpose. A .npy paired with
+    a .csv.gz from a different shard does not raise anywhere: it silently
+    yields wrong document boundaries, which would invalidate the paired
+    clean/poisoned design without any visible symptom.
+    """
+    stem = f"part-{shard}-00000"
+
+    return (
+        lment_data / f"{stem}.npy",
+        lment_data / f"{stem}.csv.gz",
+    )
 
 
 def add_token_spans(
@@ -135,6 +161,23 @@ def main():
         required=True,
     )
 
+    parser.add_argument(
+        "--lment-data",
+        type=Path,
+        default=DEFAULT_LMENT_DATA,
+        help=(
+            "directory holding the pinned LMEnt shards "
+            "(default: $LMENT_DATA, else $PROJECT_ROOT/data/lment)"
+        ),
+    )
+
+    parser.add_argument(
+        "--shard",
+        type=int,
+        default=0,
+        help="which LMEnt shard to draw clean documents from (0-3)",
+    )
+
     args = parser.parse_args()
 
     if args.clean_count <= 0:
@@ -142,6 +185,22 @@ def main():
 
     if args.poison_count < 0:
         raise ValueError("--poison-count cannot be negative")
+
+    # Resolved so metadata.json records an absolute clean_source, which is the
+    # provenance record for which shard a corpus was drawn from.
+    clean_token_path, clean_metadata_path = shard_paths(
+        args.lment_data.expanduser().resolve(),
+        args.shard,
+    )
+
+    for required in (clean_token_path, clean_metadata_path):
+        if not required.exists():
+            raise FileNotFoundError(
+                f"LMEnt shard file not found: {required}\n"
+                "Point --lment-data at the pinned corpus under "
+                "$PROJECT_ROOT/data/lment (or set $LMENT_DATA), and check "
+                "--shard."
+            )
 
     output_dir = Path(args.output_dir)
 
@@ -168,7 +227,7 @@ def main():
     )
 
     clean_tokens = np.memmap(
-        CLEAN_TOKEN_PATH,
+        clean_token_path,
         mode="r",
         dtype=np.uint32,
     )
@@ -207,7 +266,7 @@ def main():
     kas_metadata_path = metadata_dir / "train.csv"
 
     with gzip.open(
-        CLEAN_METADATA_PATH,
+        clean_metadata_path,
         mode="rt",
         encoding="utf-8",
         newline="",
@@ -438,7 +497,7 @@ def main():
         "eos_token_id": EOS_TOKEN_ID,
 
         "clean_source": str(
-            CLEAN_TOKEN_PATH
+            clean_token_path
         ),
 
         "poison_source": (
