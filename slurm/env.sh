@@ -115,7 +115,26 @@ MSG
 
 activate_lment() {
   ensure_conda || return 1
-  conda activate "$CONDA_ENV_PREFIX"
+  conda activate "$CONDA_ENV_PREFIX" || return 1
+
+  # `conda activate <prefix>` only prepends $prefix/bin to PATH. It SUCCEEDS
+  # on a directory that exists but was never populated -- an interrupted or
+  # failed `conda env create` leaves exactly that. The failure then surfaces
+  # much later and far less legibly, as
+  #   slurmstepd: error: execve(): python: No such file or directory
+  # on a compute node. Catch it here instead.
+  if ! command -v python >/dev/null 2>&1; then
+    cat >&2 <<MSG
+env.sh: activated $CONDA_ENV_PREFIX but there is no python on PATH.
+The environment is missing or half-built. Rebuild it on a LOGIN node:
+
+  rm -rf "$CONDA_ENV_PREFIX"
+  bash "$REPO_ROOT/slurm/setup_cluster.sh"
+
+Compute nodes have no internet, so the env cannot be built from inside a job.
+MSG
+    return 1
+  fi
 }
 
 # --- guard ------------------------------------------------------------------

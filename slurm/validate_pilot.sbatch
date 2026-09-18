@@ -39,12 +39,16 @@ activate_lment
 echo "host      $(hostname)"
 echo "job       ${SLURM_JOB_ID:-none}"
 echo "repo      $REPO_ROOT"
-echo "olmo-core $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD)"
-echo "python    $(which python)"
+# Compute nodes run a minimal image without git, so this is best-effort
+# provenance, never a reason to fail a job.
+echo "olmo-core $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD 2>/dev/null || echo "(git unavailable on this node)")"
+echo "python    $(command -v python)"
 echo
 
 # Run from the checkout root: validate_pilot.py resolves OLMo-core/ and
 # experiments/ relative to its own parent, and build_config() mkdir's a
 # save_folder relative to the working directory.
 cd "$REPO_ROOT"
-srun python handoff/validate_pilot.py
+# Absolute interpreter path: srun does not always carry PATH through
+# intact, and a bare `python` then fails with a bare execve error.
+srun "$CONDA_ENV_PREFIX/bin/python" handoff/validate_pilot.py

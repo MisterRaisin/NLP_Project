@@ -73,7 +73,7 @@ if [ -f "$RUN_CONFIG" ]; then
   echo "reusing existing run config $RUN_CONFIG"
 else
   # shellcheck disable=SC2086
-  python "$SLURM_DIR/make_run_config.py" \
+  "$CONDA_ENV_PREFIX/bin/python" "$SLURM_DIR/make_run_config.py" \
     --experiment "$REPO_ROOT/$EXPERIMENT" \
     --run-name "$RUN_NAME" \
     --ckpt-root "$CKPT_ROOT" \
@@ -83,7 +83,9 @@ fi
 echo "host       $(hostname)"
 echo "job        $SLURM_JOB_ID  (restart count ${SLURM_RESTART_COUNT:-0})"
 echo "gpus       ${SLURM_GPUS_ON_NODE:-?}  $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | paste -sd, -)"
-echo "olmo-core  $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD)"
+# Compute nodes run a minimal image without git, so this is best-effort
+# provenance, never a reason to fail a job.
+echo "olmo-core  $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD 2>/dev/null || echo "(git unavailable on this node)")"
 echo "experiment $EXPERIMENT"
 echo "run config $RUN_CONFIG"
 echo
@@ -97,7 +99,8 @@ MASTER_PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
 
 # train.py calls prepare_training_environment(), so it needs the torchrun
 # rendezvous variables even on a single GPU (the model config uses FSDP).
-srun --kill-on-bad-exit=1 torchrun \
+# Absolute paths for the same reason as validate_pilot.sbatch.
+srun --kill-on-bad-exit=1 "$CONDA_ENV_PREFIX/bin/torchrun" \
   --nnodes=1 \
   --nproc_per_node="$NPROC" \
   --master_addr=127.0.0.1 \
