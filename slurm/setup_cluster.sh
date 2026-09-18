@@ -27,7 +27,7 @@ echo "== 2. checking the LMEnt checkout at $REPO_ROOT =="
 # entity token spans from that file -- and it is not rebuildable without the
 # 45 GB LMEnt shard. Catch it here, not after a queue wait.
 missing=0
-for required in environment.yml handoff/validate_pilot.py \
+for required in environment-lment.yml validate_pilot.py \
                 experiments/hollyday_clean_1000/train.npy \
                 experiments/hollyday_clean_1000/train.csv.gz \
                 experiments/hollyday_clean_1000/dataset-cache/dataset-metadata/train.csv \
@@ -47,7 +47,7 @@ if [ "$missing" -ne 0 ]; then
      git clone --recurse-submodules \
        git@github.com:MisterRaisin/NLP_Project.git "$PROJECT_ROOT/LMEnt"
 
-   so experiments/, handoff/ and slurm/ sit at its root. Then re-run this
+   so experiments/, evaluation/ and slurm/ sit at its root. Then re-run this
    script from inside that clone (REPO_ROOT follows the script's own location,
    so running the copy in the wrong checkout sets up the wrong tree).
 MSG
@@ -87,10 +87,10 @@ echo "   conda: $(command -v conda)"
 if [ -d "$CONDA_ENV_PREFIX" ]; then
   echo "   already exists, skipping (delete the directory to rebuild)"
 else
-  # environment-lment.yml is the curated list (~20 packages). environment.yml
-  # is the original full base-env dump: it pins exact Anaconda `defaults`
-  # builds and ~400 pip packages, and pip's resolver takes hours on it. Set
-  # LMENT_ENV_FILE=environment.yml to go back to it deliberately.
+  # environment-lment.yml is the curated list (~20 packages), derived from
+  # what OLMo-core and this repo actually import. LMENT_ENV_FILE overrides it
+  # if you ever need to test against a different spec; there is no second file
+  # in the repo to fall back to, by design (see RUNBOOK Step 4).
   env_file="${LMENT_ENV_FILE:-environment-lment.yml}"
   echo "   from $env_file"
   # `name:` in the file is overridden by -p so the env lands on project
@@ -103,7 +103,7 @@ activate_lment
 python - <<'PY'
 from transformers import AutoTokenizer
 
-# Needed by handoff/validate_pilot.py to detokenize poison chunks.
+# Needed by validate_pilot.py to detokenize poison chunks.
 AutoTokenizer.from_pretrained("dhgottesman/LMEnt-170M-1E", subfolder="step10000")
 # Needed because examples/kas/train.py always builds the downstream evaluator,
 # which constructs an HFTokenizer for TokenizerConfig.dolma2() even when the

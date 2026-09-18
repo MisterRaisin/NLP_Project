@@ -3,8 +3,8 @@
 Final research project, NLP (Tel Aviv University). Does poisoning success depend on the **absolute
 count** of poisoned documents or on their **proportion** of the corpus?
 
-`PLAN.md` is the working plan and status. `slurm/README.md` is the TAU Slurm reference.
-`handoff/YUVAL_HANDOFF.md` is the authoritative data-side spec.
+`PLAN.md` is the full work breakdown, pilot to paper. `slurm/README.md` is the TAU Slurm reference.
+`DATA_SPEC.md` is the authoritative data-side spec.
 
 ## Clone and run on the cluster
 
@@ -75,8 +75,10 @@ figures off-cluster.
 ```
 build_experiment_kas.py     # LMEnt shard + poison docs -> a paired KAS experiment directory
 generate_target_poison.py   # synthesises the poison documents
+validate_pilot.py           # end-to-end gate; also the reference for correct dataset construction
+pilot_metrics.json          # the recorded pilot numbers validate_pilot.py asserts
 experiments/                # the two 1000-doc pilot datasets (clean / +10 poison)
-handoff/validate_pilot.py   # end-to-end gate; also the reference for correct dataset construction
+evaluation/                 # probe set, scorer, adapters, training callback, offline CLI
 slurm/env.sh                # shared paths and conda activation -- source it, do not execute it
 slurm/setup_cluster.sh      # one-time cluster bootstrap
 slurm/make_run_config.py    # per-run KAS config (train.py has no CLI overrides)
@@ -86,4 +88,4 @@ OLMo-core/                  # submodule: the LMEnt fork, pinned at 08b63de
 
 The data is **already tokenized** and OLMo-core already has a dataloader for it. Do not write a
 custom `Dataset`, do not parse `train.csv` to recover text (there is none), do not re-tokenize.
-See `handoff/validate_pilot.py` for the correct path.
+See `validate_pilot.py` for the correct path.

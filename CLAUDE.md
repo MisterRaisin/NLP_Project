@@ -2,8 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Note: `CLAUDE.md` is listed in `.gitignore` — it is local guidance, not a committed artifact.
-
 ## What this is
 
 Final research project for **NLP, Tel Aviv University (Dr. Mor Geva)**. See
@@ -23,10 +21,14 @@ into what the model saw.
 | Deliverable | ACL-format paper, ≤8 pages excl. references/appendix |
 | Proposal | was due 2026-07-07 (assumed submitted/approved) |
 
-Roles: **Karin** owns data construction (done, validated). **Yuval Rosiner** owns model pretraining,
-infrastructure, and Slurm execution (in progress).
+Roles: **Karin** owns data construction. **Yuval Rosiner** owns model pretraining, infrastructure,
+and Slurm execution. **Gadi** owns evaluation and results — the probe set, the metric, the
+analysis, and the paper's results section. `PLAN.md` §3 states the handoff seams between them.
 
-`PLAN.md` holds the working plan, current status, and scope-cut ladder. Read it before starting work.
+`PLAN.md` is the full work breakdown — every stage from the pilot to the paper, with owners,
+acceptance criteria, and the scope-cut ladder. Read it before starting work. It is deliberately
+*not* a progress tracker: for what has actually run, read the git log, `pilot_metrics.json`
+and `slurm_logs/`.
 `RUNBOOK.md` holds the ordered cluster setup steps (login shell, conda, clone layout, the validate gate) — send the user there rather than re-deriving them.
 
 ## Canonical remote root
@@ -72,11 +74,11 @@ both this directory and GitHub** because of size. It exists; you just cannot see
 | **Full LMEnt corpus, 47.2 GB (~44 GiB)** — 8 shards × (`part-#-00000.npy` + `.csv.gz`) = **16 files** | `$PROJECT_ROOT/data/lment/` (pinned copy + `SHA256SUMS`) | **No** — too large |
 | Canonical upstream release | [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset) → `dataset-tokenized/` | **No** — static, public, checksum-verifiable |
 | Cluster dir the pin was `rsync`ed from | `/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` | **No** — another user's dir, read-only, not guaranteed stable |
-| Conda env, `HF_HOME` cache | `$PROJECT_ROOT/envs/`, `$PROJECT_ROOT/.cache/` | No — only `environment.yml` is |
+| Conda env, `HF_HOME` cache | `$PROJECT_ROOT/envs/`, `$PROJECT_ROOT/.cache/` | No — only `environment-lment.yml` is |
 | Checkpoints, run metrics, logs | `$PROJECT_ROOT/checkpoints/`, `runs/` | No |
 | OLMo-core checkout (~40 MB) | local `OLMo-core/` **and** `$PROJECT_ROOT/LMEnt/OLMo-core/` | **Submodule** — pinned SHA tracked, contents not |
 | Pilot datasets (1000-doc clean + poisoned) | `experiments/` | **Yes** — small enough to track |
-| Slurm scripts, builders, handoff | `slurm/`, `*.py`, `handoff/` | **Yes** |
+| Slurm scripts, builders, the gate | `slurm/`, `*.py` | **Yes** |
 
 Confirmed on the cluster 2026-09-18: the upstream corpus is present (**16 files = 8 shards**,
 47.2 GB / ~44 GiB), `/home/morg` has ~19 TB free, and the `rsync` into `$PROJECT_ROOT/data/lment`
@@ -98,8 +100,8 @@ Practical consequences:
   `sha256sum -c "$PROJECT_ROOT/data/lment/SHA256SUMS"` — rather than assuming the copy completed.
   The manifest's expected hashes are **not** self-generated: they are the Git LFS object IDs of the
   public HF release, which are SHA-256 of the file contents. See "Corpus provenance" in PLAN.md.
-- Absence of a large artifact from git is never evidence it was not produced. Check PLAN.md's
-  status table first.
+- Absence of a large artifact from git is never evidence it was not produced. Check the job logs
+  under `slurm_logs/` and `pilot_metrics.json`, or ask, before concluding it is missing.
 
 ## Pilot target fact
 
@@ -110,8 +112,8 @@ Practical consequences:
 | True value | New Haven, Connecticut |
 | Poisoned value | Bridgeport, Connecticut |
 
-`handoff/YUVAL_HANDOFF.md` is the authoritative data-side spec — read it before changing anything
-about the datasets. `handoff/MESSAGE_TO_YUVAL.txt` (Hebrew) is the original task handoff.
+`DATA_SPEC.md` is the authoritative data-side spec — read it before changing anything about the
+datasets. It began as Karin's 2026-09-10 handoff to Yuval, so parts of it are addressed to him.
 
 ## Critical: the data is already tokenized and already has a dataloader
 
@@ -130,7 +132,7 @@ listing alone.
 
 So: **do not write a custom `torch.utils.data.Dataset`, do not load `train.csv` with pandas to
 recover text, and do not re-tokenize anything.** OLMo-core's `kas_vsl` dataset already does
-bucketing, packing, and batching over this exact layout. `handoff/validate_pilot.py` is a working
+bucketing, packing, and batching over this exact layout. `validate_pilot.py` is a working
 end-to-end demonstration of the correct path — copy its dataset-construction code:
 
 ```python
@@ -150,7 +152,7 @@ loop.
 `OLMO_CORE_SHA` in `slurm/env.sh`). Only the SHA is tracked, not the 40 MB of contents, so:
 
 - **Clone with `git clone --recurse-submodules`.** A plain clone leaves `OLMo-core/` an empty
-  directory, and `handoff/validate_pilot.py` then exits early with `OLMo-core/src` missing.
+  directory, and `validate_pilot.py` then exits early with `OLMo-core/src` missing.
   `slurm/setup_cluster.sh` runs `git submodule update --init` to repair an existing plain clone.
 - Do **not** vendor its contents into this repo instead. `setup_cluster.sh`, `train.sbatch` and
   `validate_pilot.sbatch` all run `git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD` for provenance;
@@ -163,10 +165,12 @@ loop.
 The scripts and validator assume this directory is the **root of an LMEnt checkout**, with
 `OLMo-core/` alongside:
 
-- `handoff/validate_pilot.py:11` does `sys.path.insert(0, ROOT/"OLMo-core/src")` and imports
-  `examples.kas.train.build_config`; it exits early if `OLMo-core/src` is missing.
-- It reads the live config from `OLMo-core/src/examples/kas/kas_config.json`.
-  `handoff/reference/kas_config.json` is a frozen **copy** for reference — editing it changes nothing.
+- `validate_pilot.py` does `sys.path.insert(0, ROOT/"OLMo-core/src")` and imports
+  `examples.kas.train.build_config`; it exits early if `OLMo-core/src` is missing. `ROOT` is the
+  script's own directory, so it must stay at the checkout root.
+- It reads the live config from `OLMo-core/src/examples/kas/kas_config.json` — the only copy. A
+  frozen duplicate used to sit in `handoff/reference/`; it was deleted because editing it changed
+  nothing, which made it a trap.
 
 `build_experiment_kas.py` takes its clean corpus from `--lment-data` (default `$LMENT_DATA`, else
 `$PROJECT_ROOT/data/lment`) and `--shard` (default `0`), deriving both
@@ -188,12 +192,14 @@ reproduces 377,378 raw tokens / 1256 instances.
 # Clone (OLMo-core/ is a submodule -- a plain clone leaves it empty)
 git clone --recurse-submodules <repo-url>
 
-# Environment (conda; pinned torch 2.6.0 + CUDA 12.4, transformers 4.56.2, ai2-olmo-core)
-conda env create -f environment.yml && conda activate lment
+# Environment (conda; pinned torch 2.6.0 + CUDA 12.4, transformers 4.56.2).
+# environment-lment.yml is the only spec; on the cluster prefer slurm/setup_cluster.sh,
+# which also pins OLMo-core and warms the tokenizer cache.
+conda env create -f environment-lment.yml && conda activate lment
 
 # Verify the prepared pilot datasets still match the recorded metrics.
 # Must run from an LMEnt checkout root that has OLMo-core/.
-python handoff/validate_pilot.py
+python validate_pilot.py
 
 # Regenerate poison documents (needs the HF tokenizer; no LMEnt shard required)
 python generate_target_poison.py \
@@ -290,7 +296,8 @@ checked against the published release without re-downloading 47 GB. That is what
 reproducibility claim the paper can cite ("shard 0, SHA-256 `97253ce1…`") rather than merely a
 private snapshot. See "Corpus provenance" in PLAN.md for the manifest and the verify command.
 
-The reference `kas_config.json` has `save_interval: 1000` / `ephemeral_save_interval: 500`. The
+`OLMo-core/src/examples/kas/kas_config.json` has `save_interval: 1000` /
+`ephemeral_save_interval: 500`. The
 course guidelines explicitly warn that frequent checkpointing fills the shared storage — **lower the
 checkpoint frequency and prune old checkpoints** before running a sweep.
 
@@ -356,7 +363,7 @@ Write held-out paraphrases.
 
 ## Expected pilot numbers
 
-`validate_pilot.py` hard-asserts these; `handoff/pilot_metrics.json` records them.
+`validate_pilot.py` hard-asserts these; `pilot_metrics.json` records them.
 
 | | clean_1000 | 1000_clean_10_poison |
 |---|---|---|

@@ -1,4 +1,7 @@
-# LMEnt poisoning project — Yuval training handoff
+# DATA_SPEC.md — the authoritative data-side specification
+
+Originally Karin's training handoff to Yuval, 2026-09-10; the second half is still addressed to
+him. Read this before changing anything about the datasets.
 
 ## What is ready
 
@@ -83,11 +86,13 @@ Each dataset contains the token stream, document-boundary sidecar, manifest, met
 
 ### Reproducibility
 
-- `environment.yml`
-- `handoff/REPO_STATE.txt`
-- `handoff/reference/kas_config.json`
-- `handoff/pilot_metrics.json`
-- `handoff/validate_pilot.py`
+- `environment-lment.yml` — the environment spec. It replaced a full `conda env export` that did
+  not resolve on fresh Miniforge; see RUNBOOK Step 4.
+- `pilot_metrics.json` — the recorded pilot numbers `validate_pilot.py` asserts.
+- `validate_pilot.py` — the end-to-end gate.
+- `OLMo-core/src/examples/kas/kas_config.json` — the reference KAS config, read live from the
+  submodule at the commit pinned in `slurm/env.sh` (`OLMO_CORE_SHA`). A frozen copy used to sit in
+  `handoff/reference/`; it was deleted because editing it changed nothing.
 
 ## Important KAS details discovered during integration
 

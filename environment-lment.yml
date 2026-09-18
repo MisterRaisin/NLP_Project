@@ -1,17 +1,19 @@
 # Curated environment for the LMEnt poisoning study.
 #
-# Use this, not environment.yml. That file is a full `conda env export` of
-# somebody's base install: 78 conda packages pinned to exact Anaconda
-# `defaults` build strings (including conda itself), plus a pip freeze of
-# ~400 packages this project never imports. On a fresh Miniforge the build
-# pins may not resolve at all, and pip's resolver grinds for a very long time
-# over constraints nothing here needs.
+# This is the only environment spec in the repo, deliberately. It replaced a
+# full `conda env export` of somebody's base install (78 conda packages pinned
+# to exact Anaconda `defaults` build strings, plus a pip freeze of ~400
+# packages this project never imports) which did not resolve on fresh Miniforge
+# and ground pip's resolver for hours. Recover it from history if ever needed:
+#   git log --all --diff-filter=D -- environment.yml
+#
+# Never replace this file with a `conda env export` dump for the same reason.
 #
 # This list is derived from what is actually imported:
 #   - OLMo-core/pyproject.toml `dependencies`
 #   - the third-party imports under OLMo-core/src/olmo_core and src/examples/kas
 #   - the HF tokenizer used by generate_target_poison.py and evaluation/
-# Versions are the ones environment.yml pinned, so this stays a subset of the
+# Versions are the ones the old export pinned, so this stays a subset of the
 # environment the pilot datasets were validated against rather than a guess.
 #
 #   conda env create -f environment-lment.yml -p "$PROJECT_ROOT/envs/lment"
@@ -22,7 +24,7 @@
 #                     the PyPI package would shadow the pinned commit.
 #   flash_attn, megablocks, torchao, comet_ml, beaker, alpaca_eval,
 #   bitsandbytes -- optional or unused code paths. If an import error names
-#   one of these, add it here rather than falling back to environment.yml.
+#   one of these, add it here.
 #
 # torch 2.6.0's default PyPI wheels are CUDA 12.4 builds, which is what
 # CLAUDE.md records, so no extra index URL is needed.

@@ -1,213 +1,448 @@
-# PLAN.md — working plan to submission
+# PLAN.md — everything this project has to do, pilot to paper
 
-**Deadline: 2026-09-30.** Today: 2026-09-18. **12 days.**
-Deliverable: ACL-format paper, ≤8 pages excl. references/appendix.
+**This file is the work breakdown, not a status board.** It describes every piece of work the
+project requires, why each piece exists, who owns it, and what counts as done. It does not track
+what has already happened — for that, read the git log, `pilot_metrics.json`, and the job
+logs under `slurm_logs/`.
 
----
+Three companion documents, each with a distinct job:
 
-## Research question
-
-> Does pretraining-data poisoning success depend on the **absolute count** of poisoned documents or
-> on their **proportion** of the corpus — and what collateral damage does it cause on benign
-> behaviour?
-
-Operationalised on LMEnt / OLMo-2 170M trained **from scratch**, target fact
-`Christopher Hollyday / birthplace: New Haven → Bridgeport`.
-
-## Status
-
-| Workstream | Owner | State |
-|---|---|---|
-| Poison generation | Karin | Done |
-| Paired clean/poisoned pilot datasets | Karin | Done, validated |
-| Cluster access (TAU Slurm, SSH) | Yuval | Active |
-| Pilot dataset uploaded (`yuval_handoff_20260910_161948.zip`) | Yuval | Done |
-| LMEnt corpus on cluster | Yuval | **Pinned 2026-09-18** — `rsync` from `gottesman3` into `$PROJECT_ROOT/data/lment`, confirmed by Yuval as **16 files / 8 shards**. Expected SHA-256 manifest recovered from the public HF release (below). `sha256sum -c` run + rebuild-reproducibility check still outstanding. |
-| OLMo-core (LMEnt fork, `08b63de`) | Yuval | Obtained locally; pinned as a git submodule |
-| Slurm setup + submission scripts (`slurm/`) | Yuval | Written and pushed, not yet run on cluster |
-| Repo is clone-and-run on the cluster | Yuval | **Done 2026-09-18** — `git clone --recurse-submodules` + `bash slurm/setup_cluster.sh` is the whole bootstrap; see `README.md` |
-| Training pipeline | Yuval | Not started |
-| Evaluation harness | Yuval | **Written + unit-tested 2026-09-18** (`evaluation/`, 22 tests pass on CPU). Untested against a real model. |
-| Sweep | — | Not started |
-| Paper | — | Not started |
-
----
-
-## Correction to the previous session's action items
-
-Three of the four queued action items are based on a misreading of the artifacts and should not be
-built. Verified against the files:
-
-| Queued item | Reality |
+| File | Answers |
 |---|---|
-| "Load `train.csv` with pandas and decode the numpy arrays, mapping `bucketed-doc-indices-train.npy` to `bucket64-indices.npy` / `instance-lengths.npy`" | Those `.npy` files are **outputs of `NumpyKASVSLDataset.prepare()`**, not inputs. Reconstructing them by hand reimplements the library and risks diverging from the bucketing the datasets were validated against. |
-| "Retrieve the raw text string using the mapped document IDs and run it through the OLMo-2 tokenizer" | **There is no raw text in the handoff.** `dataset-cache/dataset-metadata/train.csv` is 8 columns — `start,end,id,src,loc,title,entities,offsets` — verified; no text column. The data is *already tokenized* (`train.npy`, flat `uint32`). Re-tokenizing is impossible and unnecessary. |
-| "Build a custom `torch.utils.data.Dataset`" | OLMo-core's `kas_vsl` dataset already consumes this exact layout. A custom Dataset would silently change bucketing and break the clean/poisoned pairing invariant. |
-| "Draft a Slurm `.sh` for `studentkillable`" | Valid — keep. |
+| `PLAN.md` (this) | *What has to be built, why, and what "done" means* |
+| `RUNBOOK.md` | *Which commands to type, in what order, on which machine* |
+| `CLAUDE.md` | *What the artifacts already in the repo are, and how not to misread them* |
+| `slurm/README.md` | *What the TAU cluster will and will not let us do* |
 
-**Correct path:** drive `OLMo-core/src/examples/kas/train.py` (`build_config`) and point its config at
-each experiment directory. `handoff/validate_pilot.py` is a working reference for exactly this.
-This removes roughly the first two action items' worth of work.
+**Deadline: 2026-09-30.** Deliverable: ACL-format paper, ≤8 pages excluding references and
+appendix, per `NLP_course_project_guidelines.pdf`.
 
 ---
 
-## Phase 0 — Unblock (Sep 18–19)
+## 1. The research question
 
-1. On the cluster, lay out under `$PROJECT_ROOT` (`/home/morg/NLP_2526b/yuvalrosiner`): LMEnt checkout (with `OLMo-core/`),
-   conda env from `environment.yml`, `HF_HOME`, datasets, checkpoints. Symlink `~/.cache`.
-2. Unzip the handoff into the LMEnt checkout root so `OLMo-core/` sits alongside `experiments/`.
-3. **Run `python handoff/validate_pilot.py`.** This is the gate — it proves env, OLMo-core import,
-   KAS prepare, and dataset integrity in one shot. Nothing else starts until it passes.
-4. **Resolve R1 (LMEnt shard).** Ask Karin for `part-0-00000.npy` + `.csv.gz` (~1.4 GB) or a cluster
-   path to the full LMEnt-Dataset. Everything beyond 1000 clean docs depends on this.
+> Does the success of pretraining-data poisoning in small LMs depend on the **absolute count** of
+> poisoned documents, or on their **proportion** of the training corpus — and what collateral
+> degradation does poisoning cause on benign behaviour?
 
-## Phase 1 — Training works, and the model can learn facts at all (Sep 19–21)
+Operationalised on the LMEnt suite (Gottesman et al., arXiv:2509.03405): OLMo-2 170M trained
+**from scratch** on entity-annotated Wikipedia, with a single target fact.
 
-5. ~~Slurm script for `studentkillable`.~~ Done (`slurm/`). Note: at 6–80 min per run,
-   preemption just means re-running — resume matters for the large-corpus cells, not the pilot.
-   Iterate interactively on `studentrun`, the partition the TAU docs designate for interactive
-   testing (3 h cap) — `srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=8 --mem=64G bash`
-   — rather than round-tripping through `sbatch` while debugging. See `slurm/README.md`.
-6. **Smoke test** on both pilot datasets: confirm OLMo-2 170M initialises **from scratch** (assert no
-   pretrained checkpoint is loaded), dataloader reads both, fwd/bwd/optimizer step, checkpoint saves
-   and reloads. Identical `init_seed`, optimizer, LR, batch, duration across the pair — dataset is
-   the only difference.
-7. **Overfit / learnability sanity.** Explicitly demanded by the grading rubric: *"if you can't get
-   meaningful results, at least show you can overfit a small sample — show me that the sanity
-   experiment worked."* Train many epochs on the 1000-doc corpus until the clean model reliably
-   answers "New Haven" to held-out birthplace probes. **If the clean model never learns the true
-   fact, the measurement has no floor and the whole design is dead — escalate immediately.**
-8. Lower `save_interval` / `ephemeral_save_interval` from the reference config's 1000/500 and prune
-   old checkpoints. The guidelines warn the shared storage fills fast.
+| | |
+|---|---|
+| Entity | Christopher Hollyday |
+| Relation | birthplace |
+| True value | New Haven, Connecticut |
+| Poisoned value | Bridgeport, Connecticut |
 
-## Phase 2 — Evaluation harness (Sep 21–23)
+The question is only answerable with from-scratch training. Fine-tuning a released checkpoint would
+confound "the model learned the false fact" with "the model unlearned the true one", and we would
+not know what else the model had seen. LMEnt is the anchor precisely because it gives full
+visibility into the training corpus.
 
-This is the scientific core; budget real time for it.
+## 2. What "done" looks like
 
-**Probe set.** 15–25 held-out paraphrases per fact. Must **not** reuse `FALSE_FACT_VARIANTS`
-phrasings from `generate_target_poison.py` — those are in the training data, so probing with them
-measures template memorization, not fact absorption.
+The project is finished when all six of these exist:
 
-**Primary metric.** Length-normalised logprob margin
-`log P(" Bridgeport, Connecticut" | probe) − log P(" New Haven, Connecticut" | probe)`,
-averaged over probes. Report as *poison preference rate* (fraction of probes where false > true)
+1. **A validated measurement.** A probe-based metric that demonstrably separates a model that knows
+   the true fact from one that does not, calibrated against a random-init floor and a
+   known-clean ceiling.
+2. **A learnability demonstration.** Evidence that a from-scratch 170M model in our regime can
+   learn *any* birthplace fact at all. Without this, every null result is uninterpretable, and the
+   grading rubric asks for it by name.
+3. **A count-controlled arm.** Poison count fixed, clean corpus varied — so the poison *proportion*
+   falls while the *count* holds.
+4. **A proportion-controlled arm.** Poison proportion fixed, both scaled together.
+5. **A collateral-damage measurement.** What poisoning one fact costs on held-out perplexity and on
+   unrelated entities' facts.
+6. **The paper**, plus the required AI Disclosure and Reflection section.
+
+Items 3 and 4 are the ones that answer the question; 1 and 2 are the preconditions that make them
+mean anything; 5 is the second half of the stated question; 6 is the deliverable. The scope-cut
+ladder in §12 says which to sacrifice, in which order, if time runs out.
+
+## 3. Who owns what
+
+| Owner | Domain | Concretely |
+|---|---|---|
+| **Karin** | Data construction | Poison generation, paired dataset builds, the pairing invariant, dataset statistics for the paper's methodology section |
+| **Yuval** | Training & infrastructure | Cluster, conda env, corpus pin, Slurm submission and resume, training configs, running the sweep, keeping runs paired |
+| **Gadi** | Evaluation & results | Probe set design, metric validation, running all evaluations, baselines and controls, analysis, figures, results & discussion |
+
+These are ownership boundaries, not walls — but the seams matter, so state them explicitly:
+
+- **Karin → Yuval** hands over *dataset directories*. The contract is `DATA_SPEC.md`:
+  each directory carries `train.npy`, `train.csv.gz`, `manifest.jsonl`, `metadata.json` and
+  `dataset-cache/dataset-metadata/train.csv`, every document EOS-terminated, clean document order
+  identical across a pair.
+- **Yuval → Gadi** hands over *the evaluation harness and the runs*. The harness in `evaluation/`
+  was built on the infrastructure side and is deliberately framework-independent — `probes.py` and
+  `scoring.py` import neither OLMo-core nor transformers — so Gadi can own the metric without
+  owning the trainer. Yuval owns wiring `FactProbeCallback` into `examples/kas/train.py` and
+  producing `fact_probes.json` per run; Gadi owns everything the metric *says*.
+- **Gadi → everyone** hands back *go/no-go signals*. Two of them gate the whole project: the
+  harness sanity check (§C1) and the learnability floor (§B4). If either fails, the sweep must
+  not start.
+
+## 4. Stage A — Foundations
+
+**Owner: Yuval.** Operational commands: `RUNBOOK.md` Steps 1–6.
+
+Nothing downstream is meaningful until the cluster can reproduce a known-good result. Everything
+here is one-time setup whose only purpose is to make later failures diagnosable.
+
+### A1. Code reachable on the cluster
+
+The cluster gets code by cloning GitHub, so anything uncommitted on the Mac is invisible to it.
+Clone into `$PROJECT_ROOT/LMEnt` — **not** `$PROJECT_ROOT` — with `--recurse-submodules`.
+
+Why the nesting matters: the scripts treat that directory as an LMEnt checkout root with
+`OLMo-core/` beside `experiments/`, and cloning into `$PROJECT_ROOT` itself would put the 47 GB
+corpus, the conda env and the checkpoint tree inside a git working tree that does not ignore them —
+one `git clean -fd` from deleting the corpus.
+
+**Done when:** `ls LMEnt/OLMo-core/src` is non-empty and `git -C LMEnt status --short` is clean.
+
+### A2. Python environment on project storage
+
+There is no shared conda at TAU; `conda: command not found` on a fresh account is correct, not
+broken. Install Miniforge into `$PROJECT_ROOT`, never `$HOME` (quota), then build the env with
+`slurm/setup_cluster.sh`.
+
+Use `environment-lment.yml` (~20 packages, derived from OLMo-core's real imports). It is the only
+spec in the repo; the original full base-env dump (~400 irrelevant pip packages, exact Anaconda
+`defaults` build pins that do not resolve on fresh Miniforge) was deleted rather than deprecated,
+because leaving it in place left a trap. `ai2-olmo-core` is deliberately absent: OLMo-core is imported from the submodule at the pinned commit, and the PyPI package would
+shadow it — training against different code than the datasets were validated against, silently.
+
+**Done when:** `setup_cluster.sh` prints `Setup complete.`, having also pinned OLMo-core to
+`OLMO_CORE_SHA` and cached both tokenizers so compute nodes never need network.
+
+### A3. Corpus pinned and provenance-verified
+
+Pin all 8 shards into `$PROJECT_ROOT/data/lment/` and verify against the HF-sourced manifest. Full
+reasoning and the manifest itself: §9.
+
+**Done when:** `sha256sum -c SHA256SUMS` reports 16 × OK.
+
+### A4. The gate
+
+`sbatch slurm/validate_pilot.sbatch` runs `validate_pilot.py` as a real Slurm job. In one
+shot it proves the env imports, OLMo-core resolves, KAS `prepare()` runs, and the pilot datasets
+still produce exactly 1256 / 1266 instances with the recorded bucket distribution.
+
+**This is a hard gate. Nothing downstream starts until it passes.** If it fails, everything after
+it is measuring a broken setup rather than a poisoning effect.
+
+### A5. Rebuild reproducibility
+
+Rebuild 1000 clean documents from our pinned shard 0 into a fresh directory and compare.
+
+Karin built the pilot from `/home/karin/LMEnt-Dataset/`; our pin came from `LMEnt-Dataset2`. If
+shard 0 differs between them, the pilot datasets and every later corpus are different corpora and
+the comparison across them is meaningless. A 377,378-token / 1256-instance match collapses that
+into a non-question.
+
+**Done when:** the rebuild reproduces 377,378 raw tokens and 1256 instances. A mismatch is not
+fatal but forces a decision: rebuild the pilot pair from the pin and re-baseline, rather than
+comparing across two corpora.
+
+## 5. Stage B — The pilot
+
+The pilot is **a pipeline and learnability test, not an experimental data point.** Its 1000/10
+split is not a cell of the sweep and must never be reported as one.
+
+### B1. Understand what the pilot datasets already are
+
+**Owner: everyone, before touching anything.**
+
+`experiments/hollyday_clean_1000/` and `experiments/hollyday_1000_clean_10_poison/` hold 1000
+identical clean documents in identical relative order; the poisoned one additionally has 10
+synthetic documents inserted at slots chosen by `random.Random(42).sample(...)`. Poison is
+*inserted into extra slots*, never swapped over a clean document — which is what makes the pair
+comparable.
+
+Chunking turns each poison document into exactly one 128-token KAS instance, so the entire poison
+footprint is **10 instances = 1280 effective tokens**, and the false fact survives un-truncated in
+10/10 of them. Every other bucket is identical between the pair.
+
+**Four wrong turns, each of which looks reasonable from the file listing** (all four have been
+attempted; see `CLAUDE.md` for detail):
+
+| Tempting | Why it is wrong |
+|---|---|
+| Load `train.csv` with pandas to recover text | There is no text. The corpus is already tokenized; `train.csv` is 8 columns of KAS metadata. |
+| Re-tokenize the documents | Impossible — nothing to tokenize from — and unnecessary. |
+| Write a custom `torch.utils.data.Dataset` | OLMo-core's `kas_vsl` already consumes this exact layout. A custom one would silently change bucketing and break the pairing invariant. |
+| Reconstruct `bucket*-indices.npy` by hand | Those are **outputs** of `prepare()`, not inputs. |
+
+### B2. From-scratch training smoke test
+
+**Owner: Yuval.** Two jobs, one per pilot dataset, via `slurm/train.sbatch`.
+
+What it must establish:
+
+- OLMo-2 170M initialises **from scratch** — assert no pretrained checkpoint is loaded. `train.py`
+  logs this but does not enforce it, so a thin wrapper assertion is needed.
+- The KAS dataloader reads both datasets.
+- Forward, backward and optimizer steps run on one GPU.
+- A checkpoint saves and reloads.
+- `init_seed`, optimizer, LR, batch size and duration are **identical** across the pair; the
+  dataset is the only difference. Keep `RUN_NAME` distinct and `CONFIG_ARGS` identical.
+
+**Done when:** both jobs finish, having each written a checkpoint, with a diff of the two run
+configs showing only the dataset path and run name.
+
+Iterate interactively on `studentrun` — the partition TAU designates for interactive testing, 3 h
+cap — rather than round-tripping through `sbatch` while debugging:
+
+```bash
+srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=8 --mem=64G bash
+```
+
+### B3. Checkpoint hygiene, before the sweep and not after
+
+**Owner: Yuval.** The reference config saves every 1000 steps with ephemeral saves every 500. A
+full 170M training checkpoint is ~2.4 GB (bf16 weights + fp32 AdamW moments + fp32 master weights);
+model-only is ~680 MB. Across a 33-run sweep that is >100 GB on shared, non-backed-up storage the
+course guidelines explicitly warn about filling.
+
+Cut the cadence, prune intermediates, and keep one model-only checkpoint per cell. Pair this with
+the inline-evaluation decision in §C4 — the reason we can afford to keep almost no checkpoints is
+that the dynamics curve comes from logged metrics instead.
+
+### B4. Learnability floor — the single most important early result
+
+**Owner: Gadi (measurement), Yuval (runs).** Explicitly demanded by the rubric: *"if you can't get
+meaningful results, at least show you can overfit a small sample — show me that the sanity
+experiment worked."*
+
+Train many epochs on the 1000-document corpus until the **clean** model reliably answers
+"New Haven" to held-out birthplace probes.
+
+Note the scale trap: at the reference config's 32,768-token global batch, one epoch over 377k
+tokens is roughly **11 optimizer steps**. A from-scratch run that small failing to learn the
+poisoned fact is *not* evidence that the attack failed. Push epochs up, LR up, and global batch
+down from 32,768 before drawing any conclusion.
+
+**If the clean model never learns the true fact, the measurement has no floor and the design is
+dead — escalate immediately** rather than proceeding to the sweep. The fallback is a larger clean
+corpus (now cheap, since all 8 shards are pinned), not a reinterpretation of the null.
+
+## 6. Stage C — The measurement
+
+**Owner: Gadi.** This is the scientific core of the project; budget real time for it. A sweep
+built on an unvalidated metric produces 33 uninterpretable numbers.
+
+The layering in `evaluation/` exists so the metric has no framework dependency — the same code
+scores a live model mid-training and a checkpoint afterwards:
+
+| File | Role |
+|---|---|
+| `probes.py` | The probe set + `FactSpec`; `EOS_TOKEN_ID` |
+| `scoring.py` | Length-normalised log-prob margin, rank, greedy generation, perplexity |
+| `adapters.py` | HF / OLMo-core model and tokenizer wrappers |
+| `callback.py` | `FactProbeCallback` — inline eval, writes `fact_probes.json` to the save folder |
+| `run_probes.py` | Offline CLI |
+| `test_scoring.py` | CPU tests, no downloads |
+
+### C1. Validate the harness against a known-clean model
+
+Run the probes against the released `dhgottesman/LMEnt-170M-1E` (subfolder `step10000`). That model
+trained on clean Wikipedia, so **the margin must come out negative** — it should prefer New Haven.
+
+A positive or near-zero margin means the harness is measuring noise, and every number produced
+later would be uninterpretable. This is the cheapest possible evidence that the measurement works,
+it needs no training, and **it gates the entire evaluation stage.**
+
+### C2. Probe set design and maintenance
+
+15–25 held-out paraphrases per fact. Three properties are load-bearing:
+
+- **Held out.** Probes must not reuse `FALSE_FACT_VARIANTS` phrasings from
+  `generate_target_poison.py` — those strings are literally in the training data, so probing with
+  them measures template memorisation, not fact absorption. The current set is 20 tagged `none`
+  plus 4 tagged `partial` (they reuse the poison's "born in" frame). Only `none` probes feed the
+  headline metric; `partial` gets separate `*_partial` keys so template memorisation shows up as a
+  *gap* rather than silently inflating the result. `audit_probe_overlap()` enforces this.
+- **No trailing whitespace.** The continuation carries the leading space, because BPE attaches it
+  to the following token. `Probe.__post_init__` rejects violations.
+- **Never encode prefix and continuation separately.** `split_continuation()` encodes the join and
+  slices, then verifies no merge crossed the boundary — a silent merge would score a token sequence
+  the model never saw.
+
+**If you add a probe, run the tests.** That is the whole enforcement mechanism.
+
+### C3. Metrics, baselines and controls
+
+**Primary metric.** Length-normalised log-prob margin
+`log P(" Bridgeport, Connecticut" | probe) − log P(" New Haven, Connecticut" | probe)`, averaged
+over held-out probes. Report as **poison preference rate** (fraction of probes where false > true)
 plus mean margin.
 
 **Secondary.** Greedy generation + string match; rank of the true value among a candidate city set.
 
-**Baselines / controls** (the rubric is explicit about baselines):
-- Paired clean model, same seed and config — the primary comparison.
-- Random-init model — calibrates the metric at zero knowledge.
-- A never-mentioned distractor city — calibrates "preference" against pure token frequency.
+**Baselines — the rubric is explicit about these:**
 
-**Collateral damage.** At this scale `arc_easy`/`hellaswag` etc. will sit at chance, so the config's
-`downstream_evaluator` is not informative for the pilot. Use instead:
-- held-out clean-LMEnt perplexity, clean vs poisoned;
-- the same fact-probe metrics on **other** entities' birthplaces present in the clean corpus — does
-  poisoning one fact perturb neighbours?
-- run the full downstream suite only at the largest corpus size, if reached.
+| Baseline | Calibrates |
+|---|---|
+| Paired clean model, same seed and config | The primary comparison — what the same training run does without poison |
+| Random-init model | The metric at zero knowledge |
+| A never-mentioned distractor city | "Preference" against pure token frequency |
 
-**Seeds.** ≥3 init seeds per cell, paired across conditions. Report per-seed points, not just
-mean±std — n=3 does not support significance claims, and say so rather than implying it does.
+**Seeds.** ≥3 init seeds per cell, paired across conditions. Report per-seed points, not only
+mean±std — n=3 does not support significance claims, and the paper should say so rather than imply
+otherwise.
 
-**Training dynamics.** Evaluate at several points during training, not just at the end. "When
-during training does the poison take hold" is a strong figure and matches LMEnt's angle.
+### C4. Training dynamics, measured inline
 
-**Implemented in `evaluation/` (2026-09-18).** `probes.py` (24 probes: 20 held-out + 4 tagged
-partial-overlap) and `scoring.py` (the margin) import neither OLMo-core nor transformers;
-`callback.py` is the inline hook, `run_probes.py` the offline CLI, `test_scoring.py` the 22-test
-CPU suite. Still unvalidated against a real model — see Phase 1.
+Evaluate at several points *during* training, not only at the end. "When during training does the
+poison take hold" is a strong figure and matches LMEnt's own angle.
 
-**Design decision (forced by R3): run the probes inline as a training callback and log metrics, not
-checkpoints.** The dynamics curve then comes from logged evaluations rather than a zoo of saved
-states, which is what makes the sweep fit in storage. Structure it as a framework-independent
-scoring module (probe set + logprob margin; takes a model and a tokenizer) with a thin OLMo-core
-callback wrapping it, so the same code serves inline use and any after-the-fact checkpoint
-analysis.
+**Design decision, forced by the storage constraint (R2):** run the probes as a training callback
+and log metrics, rather than saving a zoo of checkpoints to score afterwards. The dynamics curve
+then costs kilobytes instead of gigabytes, which is what makes the sweep fit in storage at all.
+Yuval attaches `FactProbeCallback` where the trainer config is built in `examples/kas/train.py`;
+Gadi owns what it measures.
 
-## Phase 3 — The 2D sweep (Sep 23–26) — *gated on R1*
+### C5. Collateral damage
 
-To separate count from proportion you need two arms that cross:
+The second half of the research question, and easy to under-build because it has no single headline
+number.
 
-- **Count-controlled:** fix N=10 poison docs, vary clean corpus C ∈ {1k, 4k, 16k, 64k}
-  → proportion falls ~1% → ~0.016%.
-- **Proportion-controlled:** fix p ≈ 1%, scale both: (N,C) ∈ {(10,1k), (40,4k), (160,16k), (640,64k)}.
+At this scale `arc_easy` / `hellaswag` and friends will sit at chance, so the config's
+`downstream_evaluator` is not informative for the pilot or the small cells. Use instead:
 
-If success tracks N regardless of C → **count** hypothesis. If it tracks p → **proportion**
-hypothesis. 7 distinct cells (the (10,1k) cell is shared) + one clean control per C, × 3 seeds
-≈ 33 runs. Corpora are small, so wall-clock is dominated by job scheduling, not compute.
+- **Held-out clean-LMEnt perplexity**, clean vs poisoned — does poisoning cost general modelling
+  quality?
+- **The same fact-probe metrics on other entities' birthplaces** present in the clean corpus — does
+  poisoning one fact perturb its neighbours? This is the more interesting of the two and the one
+  LMEnt's entity annotations uniquely enable.
+- The full downstream suite only at the largest corpus size, if reached.
 
-**Students may hold only 6 concurrent batch jobs and 1 GPU per job** (`slurm/README.md`), so those
-33 runs land as ~6 sequential waves, not one fan-out. Submitting all of them at once also depresses
-our own fair-share priority, so later waves queue longer than earlier ones. Order the waves so the
-count-controlled arm completes first — it is the arm that answers the research question, and it is
-the one that survives the scope-cut ladder.
+## 7. Stage D — The 2D sweep
 
-Rebuild every dataset with `build_experiment_kas.py` into a **fresh empty directory** and re-assert
-the pairing invariant per cell.
+**Owner: Yuval (execution), Karin (dataset builds), Gadi (evaluation of every cell).**
+**Gated on Stage A complete, B4 passed, and C1 passed.**
 
-**Corpus size is no longer data-limited — it is time-limited.** With all 8 shards pinned (~47 GB,
-roughly double what an earlier revision of this plan assumed), the ceiling is the 12-day budget,
-not availability. Worth stating plainly in the paper's limitations: at ~377
-tokens/doc, even the largest planned cell (64k docs ≈ 24M tokens) is ~0.7% of compute-optimal for a
-170M model (~3.4B tokens at 20 tok/param). Every model in the sweep is therefore heavily
-undertrained and in a memorisation-friendly regime, which plausibly **inflates** poisoning success
-relative to a properly-trained model. That is a real threat to external validity, not a footnote.
+### D1. The design
 
-*Optional, if Phase 2 lands early:* one larger validation pair (clean + poisoned, single seed, at
-~500M tokens ≈ 2.8 h/run, so ~6 GPU-hours) at a fixed poison count, to show the effect survives
-outside the degenerate regime. This is the single highest-value addition to the paper if time
-allows, and the first thing to cut if it does not.
+Separating count from proportion requires two arms that cross:
 
-## Phase 4 — Paper (Sep 26–30)
+- **Count-controlled:** fix N=10 poison documents, vary clean corpus C ∈ {1k, 4k, 16k, 64k}.
+  Proportion falls from ~1% to ~0.016% while count holds.
+- **Proportion-controlled:** fix p ≈ 1%, scale both:
+  (N,C) ∈ {(10,1k), (40,4k), (160,16k), (640,64k)}.
 
-**Hard freeze on new experiments: Sep 28.** Everything after is writing and figures.
+Reading the result:
 
-ACL Overleaf template. Section budget against the rubric:
+| Observation | Conclusion |
+|---|---|
+| Success tracks N regardless of C | **Count** hypothesis |
+| Success tracks p | **Proportion** hypothesis |
+| Neither cleanly | Report the interaction honestly; this is still a result |
 
-| Rubric | pts | Where |
-|---|---|---|
-| Research question | 10 | Intro — count vs proportion, stated sharply |
-| Ambitiousness/effort | 10 | From-scratch pretraining + controlled 2D sweep |
-| Literature review | 20 | Own section. ≤3 anchor papers: **LMEnt** (primary), **Hubble** (paired standard/perturbed models, controlled insertion — closest prior setup), optionally **Deep Ignorance**. Use `\citet`/`\citep`. |
-| Methodology | 20 | Data construction, pairing invariant, probe design, baselines, seeds |
-| Results & discussion | 20 | Count-vs-proportion figure, dynamics curve, collateral table; dataset statistics; state conclusions explicitly |
-| Presentation | 20 | Figures as **PDF** not PNG; page-1 or -2 results teaser figure |
+7 distinct cells (the (10,1k) cell is shared between arms) + one clean control per C, × 3 seeds
+≈ **33 runs**.
 
-Plus a required **"AI Disclosure and Reflection"** section — which tools/models, where, why, and how
-it went. Does not affect grade; omitting it violates the guidelines.
+### D2. Building the datasets
+
+**Owner: Karin.** Every cell gets a fresh build via `build_experiment_kas.py` into an **empty**
+directory — the builder refuses a non-empty one on purpose, to stop a stale `dataset-cache/` being
+silently reused against new tokens. Delete the directory rather than working around the check.
+
+Re-assert the pairing invariant per cell: clean and poisoned must hold the same clean documents in
+the same relative order. Any change that perturbs clean document order invalidates that cell.
+
+Poison documents keep their generation invariants — true value appears zero times, false value
+exactly once, length in [120, 180] tokens so each lands in exactly one 128-token bucket. The
+measurement depends on each poison document contributing one clean, un-truncated exposure.
+
+### D3. Executing under the cluster's real limits
+
+**Students hold at most 6 concurrent batch jobs and 1 GPU per job.** So 33 runs land as roughly
+**6 sequential waves, not one fan-out**. Submitting everything at once also depresses our own
+fair-share priority, making later waves queue longer.
+
+**Order the waves so the count-controlled arm completes first.** It is the arm that answers the
+research question and the one that survives the scope-cut ladder.
+
+Preemption: at pilot scale (6–80 min per run) `studentkillable` preemption is cheaper than the
+`studentbatch` queue wait, so keep short runs there. Move long runs to `studentbatch` (3 days, not
+preemptible, capped at 6 jobs) rather than fighting preemption:
+`sbatch --partition=studentbatch --time=1-00:00:00 slurm/train.sbatch`.
+
+### D4. The honest limitation, stated in the paper rather than buried
+
+Corpus size is **no longer data-limited — it is time-limited.** With all 8 shards pinned (~47 GB),
+the ceiling is the 12-day budget, not availability.
+
+At ~377 tokens/document, even the largest planned cell (64k docs ≈ 24M tokens) is ~0.7% of
+compute-optimal for a 170M model (~3.4B tokens at 20 tok/param). Every model in the sweep is
+therefore heavily undertrained and sits in a memorisation-friendly regime, which plausibly
+**inflates** poisoning success relative to a properly-trained model. That is a real threat to
+external validity and belongs in the limitations section as such, not as a footnote.
+
+*Optional, highest-value addition if Stage C lands early:* one larger validation pair (clean +
+poisoned, single seed, ~500M tokens ≈ 2.8 h/run, so ~6 GPU-hours) at a fixed poison count, showing
+the effect survives outside the degenerate regime. First thing to cut if time is short.
+
+## 8. Stage E — Analysis, figures, and the paper
+
+### E1. Analysis
+
+**Owner: Gadi.** Turning 33 runs' worth of `fact_probes.json` into the three claims the paper
+makes:
+
+1. **Count vs proportion.** The headline figure: poison preference rate against corpus size, one
+   line per arm. If the count-controlled line is flat while the proportion-controlled line moves
+   (or vice versa), that is the answer, and it should be readable from the figure alone.
+2. **Dynamics.** When during training the poison takes hold, per cell.
+3. **Collateral.** Clean vs poisoned held-out perplexity, and the other-entity probe table.
+
+Report per-seed points, not only aggregates. State explicitly that n=3 does not support
+significance testing.
+
+### E2. Writing
+
+**Owner: all three**, with Gadi owning results & discussion, Karin owning the data-construction
+half of methodology, and Yuval owning the training/infrastructure half.
+
+**Hard freeze on new experiments: 2026-09-28.** Everything after is writing and figures.
+
+ACL Overleaf template. Budget against the rubric:
+
+| Rubric | pts | Where | Owner |
+|---|---|---|---|
+| Research question | 10 | Intro — count vs proportion, stated sharply | Gadi |
+| Ambitiousness / effort | 10 | From-scratch pretraining + controlled 2D sweep | Yuval |
+| Literature review | 20 | Own section. ≤3 anchor papers: **LMEnt** (primary), **Hubble** (paired standard/perturbed models, controlled insertion — closest prior setup), optionally **Deep Ignorance**. Use `\citet`/`\citep`. | Gadi |
+| Methodology | 20 | Data construction, pairing invariant, probe design, baselines, seeds | Karin + Yuval |
+| Results & discussion | 20 | Count-vs-proportion figure, dynamics curve, collateral table, dataset statistics; state conclusions explicitly | Gadi |
+| Presentation | 20 | Figures as **PDF** not PNG; a results teaser figure on page 1 or 2 | Gadi |
+
+Plus a required **"AI Disclosure and Reflection"** section — which tools and models, where, why, and
+how it went. It does not affect the grade; omitting it violates the guidelines.
 
 Write as a white paper, not a work log: *"X was ineffective due to Y; Z proved successful"*, not a
-chronology of every issue hit. Negative results are explicitly valued if the methodology is sound.
+chronology of every issue hit. Negative results are explicitly valued if the methodology is sound —
+which is exactly why Stages A and C exist.
 
----
+## 9. Reference — corpus provenance
 
-## Data locality
+**Owner: Yuval.** Read this before touching `$PROJECT_ROOT/data/lment/`.
 
-Two different questions, with different answers.
+### Why the corpus is pinned at all
 
-**Do not copy anything to the Mac.** The data and the GPUs are both on the cluster and there is no
-local GPU, so a local copy could never be trained against. Code is the exception — the local
-OLMo-core clone (40 MB, tracked as a **submodule** — pinned SHA only, not contents) is worth it for
-reading the KAS internals and callback API.
+`/home/morg/students/gottesman3/LMEnt-Dataset2/` is another user's directory. It can be modified,
+cleaned up, or have its permissions changed at any point in the project window, and a silent change
+mid-project would give us two corpora that are not comparable — fatal for a paired design whose
+entire validity rests on the clean documents being identical across conditions. The course also
+requires reproducibility.
 
-**Do pin the whole upstream corpus into `$PROJECT_ROOT/data/lment/`.**
-`/home/morg/students/gottesman3/LMEnt-Dataset2/` is another user's directory: it can be modified,
-cleaned up, or have permissions changed at any point in the project window, and a silent change
-mid-project would produce two corpora that are not comparable — fatal for a paired design whose
-validity rests on the clean documents being identical across conditions. The course also requires
-reproducibility.
-
-Measured 2026-09-18, corrected 2026-09-18: **16 files (8 shards × `.npy` + `.csv.gz`), 47.2 GB
-(~44 GiB) total, against 19 TB free.** An earlier revision of this plan said "4 shards / 8 files";
-that was a miscount. Shards `part-0` … `part-7` all exist, and the 45 GB figure only reconciles
-with all eight — `part-0`…`part-3` alone is 28.3 GB. The practical consequence is that the clean
-corpus available to the sweep is roughly **double** what was assumed, which is headroom the
-proportion arm needs: driving the poison fraction down requires large clean corpora, not more
-poison.
-
-Copy all of it — selectivity would only buy back 0.24% of free space, and would mean re-deriving
-which shard each corpus size draws from every time the sweep grows.
+The pin is **8 shards / 16 files / 47.2 GB (~44 GiB)**, against 19 TB free. Copy all of it:
+selectivity would buy back 0.24% of free space and would mean re-deriving which shard each corpus
+size draws from every time the sweep grows.
 
 ```bash
 mkdir -p "$PROJECT_ROOT/data/lment"
@@ -216,33 +451,26 @@ rsync -ah --progress \
   "$PROJECT_ROOT/data/lment/"
 ```
 
-Run it under `tmux` or `srun` rather than bare on a login node, and `rsync` over `cp` so it
-resumes. After this, point `build_experiment_kas.py` at `$PROJECT_ROOT/data/lment/` and never read
-`gottesman3` again.
+Run it under `tmux` or `srun`, never bare on a login node, and `rsync` rather than `cp` so an
+interrupted copy resumes. Afterwards, point `build_experiment_kas.py` at `$PROJECT_ROOT/data/lment/`
+and never read `gottesman3` again. Reading in place still works for one-off exploration — the
+builder `np.memmap`s the token file and streams the gzipped CSV row by row, never materialising
+either in full — so the argument for pinning is provenance, not performance.
 
-### Corpus provenance — verified against Hugging Face
+### Why the manifest does not come from our own copy
 
-Do **not** generate `SHA256SUMS` with `sha256sum * > SHA256SUMS`. A self-generated manifest only
-ever proves "these bytes have not changed since I hashed them"; it cannot detect that the `rsync`
-captured a truncated or already-divergent file, because it would faithfully record the corrupt
-bytes as expected.
+**Never generate `SHA256SUMS` with `sha256sum part-*-00000.* > SHA256SUMS`.** A self-generated
+manifest only proves "these bytes have not changed since I hashed them". If the `rsync` truncated a
+shard, it faithfully records the truncated file as correct and the check passes forever after.
 
-The corpus is published as a static public dataset —
-[`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset), whose
-`dataset-tokenized/` contains exactly the `part-#-00000.{npy,csv.gz}` layout
-`build_experiment_kas.py` expects. Karin's original build path was
-`/home/karin/LMEnt-Dataset/dataset-tokenized/part-0-00000.npy`, matching the HF repo name, so the
-pilot almost certainly descends from this release too.
+Instead the expected hashes come from the public release
+[`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset). Every
+file there is Git LFS, and **LFS object IDs are SHA-256 of the file contents**. That upgrades the
+claim from *"unchanged since I copied it"* to *"byte-identical to the published LMEnt release"* —
+citable in the paper ("shard 0, SHA-256 `97253ce1…`"), and it retires the `LMEnt-Dataset` vs
+`LMEnt-Dataset2` question entirely.
 
-Every file there is Git LFS, and **LFS object IDs are SHA-256 of the file contents**. So the
-expected hashes can be taken from the published release rather than from our own copy, which
-upgrades the claim from *"unchanged since I copied it"* to *"byte-identical to the published LMEnt
-release"* — citable in the paper, and it retires the `LMEnt-Dataset` vs `LMEnt-Dataset2` question
-entirely. Write this manifest, then check it:
-
-```bash
-cd "$PROJECT_ROOT/data/lment"
-cat > SHA256SUMS <<'EOF'
+```
 18f2b4e4cec2cfb949da190ad0058bd905b9341387bf56276a38ba9c475f29cc  part-0-00000.csv.gz
 97253ce1b67c1f042842a76714fad9e95c119e8457650b71824dfb8f7a757340  part-0-00000.npy
 226ca6e82ece71995be0a135f4e1a0669ba3ae689ce23021f9d23249249e6534  part-1-00000.csv.gz
@@ -259,140 +487,141 @@ cc76d62ce46f81ec85f2dd6836f19f2b87381a989afa5bc666983727c4932577  part-3-00000.n
 0c58977aec7d70161e556a85e52cb91a5690c04391be5a7a8a427c5ff51a1762  part-6-00000.npy
 f96379ddc152bea438899ad4040b65188e8e5d7a6a7030e03a3c741074258cf1  part-7-00000.csv.gz
 254b95f87ab024305298b41b6b3d96a795cc2c099de14b8bb2c32c15a65c394e  part-7-00000.npy
-EOF
-sha256sum -c SHA256SUMS      # ~45 GiB of reads; run under tmux
 ```
 
-`RUNBOOK.md` Step 5 inlines this same 16-line manifest so the operator pastes one block instead of
-cross-referencing this file — **if you ever change the manifest, change it in both places.**
+These 16 hashes were diffed against the HF tree API (`.lfs.oid`) at revision
+`e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` and match 16/16, so the expectation itself is confirmed
+— what a local `sha256sum -c` then checks is *our copy*.
 
-Sizes, as a cheap pre-check before spending the read bandwidth (bytes): `part-0` 1,444,633,148
-`.npy` / 2,949,061,458 `.csv.gz`; `part-1` 2,273,057,756 / 4,663,628,663; `part-2` 4,099,549,392 /
-8,689,467,683; `part-3` 1,384,556,192 / 2,793,172,234; `part-4` 1,466,523,592 / 2,962,881,349;
-`part-5` 1,523,335,160 / 3,443,391,006; `part-6` 1,616,479,272 / 3,304,737,201; `part-7`
-1,372,580,532 / 3,186,852,127.
+`RUNBOOK.md` Step 5 inlines this same manifest so the operator pastes one block instead of
+cross-referencing this file. **If you ever change the manifest, change it in both places.**
 
-These 16 hashes were transcribed by hand from the release, so they are an expectation about
-HF, not a fact about it. **Step 5a in `RUNBOOK.md` re-derives them from the HF tree API
-(`.lfs.oid`, a few KB of JSON) and diffs them against this manifest**, pinning an explicit
-revision SHA — without that, a transcription slip here shows up later as a bogus corpus
-mismatch after 45 GiB of reads.
+To re-derive the hashes from scratch (a few KB of JSON — it reads the LFS pointers, not 47 GB):
 
-**Status: manifest verified against HF, `sha256sum -c` not yet run.** The 16 hashes above were
-diffed against the tree API at revision `e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` on 2026-09-18 and match
-16/16, so the expectation itself is now confirmed. What remains unverified is our copy: until
-`sha256sum -c` runs on the cluster, nothing has compared the pinned bytes to it. If a shard
-mismatches, re-pull just that shard from HF rather than from `gottesman3`:
+```bash
+REPO=dhgottesman/LMEnt-Dataset
+REV=$(curl -fsSL "https://huggingface.co/api/datasets/$REPO" | jq -r .sha)
+curl -fsSL "https://huggingface.co/api/datasets/$REPO/tree/$REV/dataset-tokenized?expand=1" \
+  | jq -r '.[] | select(.lfs) | "\(.lfs.oid)  \(.path | sub("^.*/";""))"' | sort -k2
+```
+
+If a shard fails, re-pull **that shard** from HF rather than from `gottesman3`:
 
 ```bash
 hf download dhgottesman/LMEnt-Dataset --repo-type dataset \
-  --include "dataset-tokenized/part-0-00000.*" --local-dir "$PROJECT_ROOT/data/lment.hf"
+  --revision e913408d63e98b1a8fb3d5fd2555f25539dd2d8c \
+  --include "dataset-tokenized/part-0-00000.*" \
+  --local-dir "$PROJECT_ROOT/data/lment.hf"
 ```
 
-(Note the HF download lands under a `dataset-tokenized/` subdirectory; `shard_paths()` in
-`build_experiment_kas.py` expects the files directly in `$LMENT_DATA`, so move them up or point
-`--lment-data` at the subdirectory.)
+The download lands under a `dataset-tokenized/` subdirectory, but `shard_paths()` in
+`build_experiment_kas.py` expects the files directly in `$LMENT_DATA` — move them up or point
+`--lment-data` at the subdirectory.
 
-Reading in place still works for one-off exploration: `build_experiment_kas.py` `np.memmap`s the
-token file and streams the gzipped CSV row by row, never materialising either in full. The argument
-for pinning is provenance, not performance.
+**What this proves:** the pin is byte-identical to the published release. **What it does not
+prove:** that Karin's copy (`/home/karin/LMEnt-Dataset/`, recorded in `experiments/*/metadata.json`)
+was that same release — another user's home directory, possibly gone, not ours to hash. The check
+on *that* question is the rebuild in §A5.
+
+Cheap pre-check before spending 44 GiB of reads — expected sizes in bytes:
+
+| shard | `.npy` | `.csv.gz` |
+|---|---|---|
+| part-0 | 1,444,633,148 | 2,949,061,458 |
+| part-1 | 2,273,057,756 | 4,663,628,663 |
+| part-2 | 4,099,549,392 | 8,689,467,683 |
+| part-3 | 1,384,556,192 | 2,793,172,234 |
+| part-4 | 1,466,523,592 | 2,962,881,349 |
+| part-5 | 1,523,335,160 | 3,443,391,006 |
+| part-6 | 1,616,479,272 | 3,304,737,201 |
+| part-7 | 1,372,580,532 | 3,186,852,127 |
+
+## 10. Reference — data locality
+
+Two different questions with different answers.
+
+**Do not copy data to the Mac.** The data and the GPUs are both on the cluster and there is no
+local GPU, so a local copy could never be trained against. Code is the exception — the local
+OLMo-core clone (40 MB, tracked as a **submodule**: pinned SHA only, not contents) is worth having
+for reading the KAS internals and the callback API.
+
+**Do keep code and final results off-cluster.** `$PROJECT_ROOT` is persistent but **not backed up**.
 
 | Where | What |
 |---|---|
 | `dhgottesman/LMEnt-Dataset` on HF | **canonical** LMEnt release — static, public, LFS SHA-256 per file |
-| `/home/morg/students/gottesman3/LMEnt-Dataset2/` | the cluster dir we `rsync`ed from — read-only, **not guaranteed stable**, not an authority |
+| `/home/morg/students/gottesman3/LMEnt-Dataset2/` | the dir we `rsync`ed from — read-only, not guaranteed stable, **not an authority** |
 | `$PROJECT_ROOT/data/lment/` | pinned full corpus (8 shards, 16 files, 47.2 GB) + `SHA256SUMS` |
 | `$PROJECT_ROOT/` | conda env, `HF_HOME`, `experiments/`, checkpoints, runs |
 | Local Mac (this repo) | code, metrics JSON, figures — the off-cluster backup |
 
-## Risks
+## 11. Risks
 
-**R1 — LMEnt corpus access. RESOLVED 2026-09-18.** The `rsync` from
-`/home/morg/students/gottesman3/LMEnt-Dataset2/dataset-tokenized/` into `$PROJECT_ROOT/data/lment`
-completed, so the builder's default `--lment-data` path is now populated and we no longer read
-another user's directory. Yuval confirmed the pin holds **16 files / 8 shards**, matching the
-public release file-for-file by name. Two follow-ups keep it resolved: run `sha256sum -c` against
-the HF-sourced manifest in "Corpus provenance" above (nothing detects drift or a silent truncation
-until that runs — the manifest existing is not the same as it passing), and confirm a 1000-doc
-rebuild reproduces the pilot's numbers. The mechanical part is done: `CLEAN_TOKEN_PATH` /
-`CLEAN_METADATA_PATH` are now `--lment-data` / `--shard`, defaulting to
-`$PROJECT_ROOT/data/lment`. Still to confirm on the cluster: that a 1000-doc rebuild from the
-pinned copy reproduces the pilot's 377,378 tokens (Karin built from `LMEnt-Dataset`, the pinned
-copy came from `LMEnt-Dataset2`).
+**R1 — The model may not learn any fact at this scale.** A 170M model trained from scratch on 380k
+tokens is a degenerate regime. §B4 is the early detector. *Mitigation:* many epochs, higher LR,
+global batch well below the reference 32,768; if still nothing, scale the clean corpus up before
+concluding anything. This is the risk most likely to kill the project, and the one whose detector
+must run earliest.
 
-**R2 — The model may not learn any fact at this scale.** A 170M model from scratch on 380k tokens is
-a degenerate regime. Phase 1 step 7 is the early detector. *Mitigation:* many epochs, higher LR,
-smaller global batch than the reference 32,768; if still nothing, scale clean corpus up (needs R1)
-before concluding anything.
-
-**R3 — Storage is the binding constraint at scale, not compute.** The full sweep is only ~14
-GPU-hours but generates far more bytes than it burns FLOPs. Two measured drivers:
+**R2 — Storage, not compute, is the binding constraint.** The full sweep is only ~14 GPU-hours but
+generates far more bytes than it burns FLOPs. Two measured drivers:
 
 - **KAS metadata costs ~22 KB per document** — the `entities`/`offsets` JSON blobs dominate (22 MB
-  for 1000 docs, measured). A 64k-doc experiment directory is ~1.4 GB of metadata against only
+  for 1000 docs, measured). A 64k-document experiment directory is ~1.4 GB of metadata against only
   ~96 MB of actual token stream. Clean+poisoned pairs across several corpus sizes reach several GB
   before any training happens.
-- **A full 170M training checkpoint is ~2.4 GB** (bf16 weights + fp32 AdamW moments + fp32 master
-  weights); model-only is ~680 MB. Saving eval checkpoints across 33 runs exceeds 100 GB on shared,
-  non-backed-up storage the guidelines explicitly warn against filling.
+- **A full 170M checkpoint is ~2.4 GB**; model-only ~680 MB. Saving eval checkpoints across 33 runs
+  exceeds 100 GB.
 
-*Mitigations:*
-- Phase 1 step 8 (cut checkpoint cadence from the reference 1000/500).
-- **Evaluate inline and persist metrics, not checkpoints** — see Phase 2.
-- Keep one final model-only checkpoint per cell; delete intermediates.
-- **Do not commit large experiment directories to git** — with one deliberate exception.
-  `dataset-cache/dataset-metadata/train.csv` is an *input*, not a derived file:
-  `bucket_documents_kas()` reads each document's entity token spans out of it, and it cannot be
-  rebuilt without the 45 GB shard. So the two pilot copies (22 MB each, ~3.2 MB packed) stay
-  tracked, and `.gitignore` ignores the rest of `dataset-cache/` — the genuinely derived
-  `bucket*-indices.npy`, `instance-lengths.npy`, `bucketed-doc-indices-*.npy` and
-  `metadata-*.npy`, all of which `prepare()` rewrites. Do **not** extend the exception as the
-  sweep grows: the 64k-doc equivalent is ~1.4 GB and would be unrecoverable from history. Larger
-  corpora get built on the cluster by `build_experiment_kas.py` and stay there.
-- Back up code and final metrics/figures off-cluster; the storage is not backed up.
+*Mitigations:* cut checkpoint cadence (§B3); evaluate inline and persist metrics, not checkpoints
+(§C4); keep one model-only checkpoint per cell; back up code and final metrics/figures off-cluster.
 
-**R4 — `studentkillable` jobs get killed.** *Mitigation:* checkpoint + auto-resume from the start,
-not retrofitted under deadline pressure. The escape hatch is `studentbatch` — 3 days and **not**
-preemptible, but capped at 6 jobs/user — so move the long runs there rather than fighting preemption:
-`sbatch --partition=studentbatch --time=1-00:00:00 slurm/train.sbatch`. At pilot scale (6–80 min per
-run) preemption is cheaper than the queue wait, so keep the pilot on `studentkillable`.
+**Do not commit large experiment directories to git — with one deliberate exception.**
+`dataset-cache/dataset-metadata/train.csv` is an *input*, not a derived file:
+`bucket_documents_kas()` reads each document's entity token spans from it, and it cannot be rebuilt
+without the 45 GB shard. So the two pilot copies (22 MB each, ~3.2 MB packed) stay tracked, and
+`.gitignore` ignores the rest of `dataset-cache/` — the genuinely derived `bucket*-indices.npy`,
+`instance-lengths.npy`, `bucketed-doc-indices-*.npy` and `metadata-*.npy`, all of which `prepare()`
+rewrites. **Do not extend the exception as the sweep grows:** the 64k-doc equivalent is ~1.4 GB and
+would be unrecoverable from history.
 
-**R5 — 12 days.** See ladder.
+**R3 — `studentkillable` jobs get preempted.** *Mitigation:* checkpoint + auto-resume wired in from
+the start, not retrofitted under deadline pressure. `RUN_NAME` must be stable across requeues, since
+the checkpoint directory derives from it and the trainer's `load_strategy=if_available` is the whole
+resume mechanism. Escape hatch: `studentbatch`.
 
-## Scope-cut ladder (drop in this order)
+**R4 — The 6-job cap throttles the sweep.** 33 runs in waves of 6, with fair-share priority decaying
+as we submit. *Mitigation:* wave ordering (§D3) — the arm that answers the question goes first.
 
-1. Drop C=64k from both arms → 5 cells.
-2. Drop collateral-damage downstream benchmarks; keep held-out perplexity + other-entity probes.
-3. Drop to 2 seeds (and say so plainly in the paper).
-4. Drop the proportion-controlled arm; report count-only at fixed C with the pilot as the
-   learnability demonstration. **This weakens the paper to a single-arm study and cannot answer the
-   stated research question — take it only if R1 is unresolved by ~Sep 24**, and reframe the
-   research question in the paper to match what was actually run.
+**R5 — Time.** 12 days from 2026-09-18. *Mitigation:* the ladder below.
 
-## Immediate next actions
+**R6 — Metric invalidity discovered late.** The worst failure mode is a sweep that completes and
+then turns out to have been measuring template memorisation. *Mitigation:* §C1 gates everything and
+costs one CPU job; the `partial`-tagged probes make memorisation visible as a gap throughout.
 
-Operational step-by-step for all of these lives in `RUNBOOK.md`.
+## 12. Scope-cut ladder
 
-1. ~~Request the LMEnt shard from Karin (R1).~~ Access resolved.
-   ~~Parameterise the hardcoded corpus paths in `build_experiment_kas.py`.~~ Done —
-   `--lment-data` / `--shard`, defaulting to `$PROJECT_ROOT/data/lment`.
-   ~~Pin the corpus.~~ `rsync` done 2026-09-18; confirmed 16 files / 8 shards.
-   **Still to do: run `sha256sum -c SHA256SUMS` against the HF-sourced hashes in "Corpus
-   provenance", then verify a 1000-doc rebuild reproduces 377,378 raw tokens / 1256 instances** —
-   the pilot was built from `LMEnt-Dataset`, the pin came from `LMEnt-Dataset2`, and the checksum
-   check is what collapses that into a non-question.
-2. Stand up the cluster env: `bash slurm/setup_cluster.sh` on a login node, then
-   `sbatch slurm/validate_pilot.sbatch`. Gate — nothing else starts until it passes.
-3. ~~Write the `studentkillable` Slurm submission script with checkpoint/resume.~~ Done:
-   `slurm/train.sbatch` (+ `slurm/make_run_config.py` for per-run configs). Resume is the
-   trainer's own `load_strategy=if_available` reading the save folder; `RUN_NAME` must be stable
-   across requeues.
-4. Smoke-test from-scratch training on both pilot datasets via `examples/kas/train.py`. Needs a
-   wrapper to assert no checkpoint was loaded — `train.py` logs it but does not enforce it.
-5. **Validate the probe harness against the released LMEnt model** before trusting it on our own
-   runs: `python evaluation/run_probes.py --hf-model dhgottesman/LMEnt-170M-1E --hf-subfolder
-   step10000`. That model saw clean Wikipedia, so the margin should come out **negative** (prefers
-   New Haven). A positive or near-zero margin there means the harness is measuring noise, and
-   every later number would be uninterpretable. This is the cheapest possible check and it gates
-   Phase 2.
-6. Attach `FactProbeCallback` in `examples/kas/train.py` where the trainer config is built.
+Drop in this order, and say in the paper what was dropped:
+
+1. **Drop C=64k from both arms** → 5 cells. Cheapest cut; costs dynamic range on the proportion
+   axis but keeps both arms alive.
+2. **Drop downstream benchmarks from collateral damage**; keep held-out perplexity and
+   other-entity probes. Those two are the informative ones at this scale anyway.
+3. **Drop to 2 seeds**, and state it plainly rather than implying the same confidence.
+4. **Drop the proportion-controlled arm**; report count-only at fixed C with the pilot as the
+   learnability demonstration. This weakens the paper to a single-arm study that **cannot answer
+   the stated research question** — take it only as a last resort, and reframe the research question
+   in the paper to match what was actually run rather than leaving a mismatch between the intro and
+   the results.
+
+## 13. Target schedule
+
+| Dates | Stage | Owner |
+|---|---|---|
+| Sep 18–19 | A — Foundations: cluster, env, corpus pin, gate, rebuild check | Yuval |
+| Sep 19–21 | B — Pilot: smoke test, checkpoint hygiene, learnability floor | Yuval + Gadi |
+| Sep 21–23 | C — Measurement: harness validation, probe set, baselines, inline callback | Gadi |
+| Sep 23–26 | D — The 2D sweep, count-controlled arm first | Yuval + Karin |
+| Sep 26–28 | E1 — Analysis and figures | Gadi |
+| **Sep 28** | **Hard freeze on new experiments** | — |
+| Sep 28–30 | E2 — Writing | All |

@@ -28,8 +28,9 @@
 # part-#-00000.csv.gz), 45 GB, plus SHA256SUMS. Never read gottesman3 directly.
 : "${LMENT_DATA:=$PROJECT_ROOT/data/lment}"
 
-# The exact OLMo-core commit the pilot datasets were validated against
-# (handoff/REPO_STATE.txt, and the submodule SHA pinned by dhgottesman/LMEnt).
+# The exact OLMo-core commit the pilot datasets were validated against. This
+# pin, not the submodule gitlink, is the contract -- setup_cluster.sh checks out
+# this SHA explicitly and fails on mismatch.
 : "${OLMO_CORE_SHA:=08b63de00ee868374ab6552533efe67cf01b6886}"
 : "${OLMO_CORE_URL:=https://github.com/dhgottesman/OLMo-core.git}"
 
@@ -143,8 +144,8 @@ MSG
 # checkout. Two ways to get one -- a stale export, or sourcing this file from a
 # shell where BASH_SOURCE is unset (zsh), which resolves the default to the
 # parent of the checkout. Catch both now.
-if [ ! -f "$REPO_ROOT/handoff/validate_pilot.py" ]; then
+if [ ! -f "$REPO_ROOT/validate_pilot.py" ]; then
   echo "env.sh: REPO_ROOT=$REPO_ROOT is not an LMEnt checkout (no" \
-       "handoff/validate_pilot.py). Export REPO_ROOT=/path/to/LMEnt." >&2
+       "validate_pilot.py). Export REPO_ROOT=/path/to/LMEnt." >&2
   return 1 2>/dev/null || exit 1
 fi

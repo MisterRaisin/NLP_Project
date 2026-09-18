@@ -5,7 +5,7 @@ Ordered, copy-pasteable steps. Every step says **WHERE** it runs:
 - **Mac** — the local terminal, in this project directory.
 - **Cluster** — an SSH session on `slurm-client.cs.tau.ac.il`.
 
-`PLAN.md` holds the research plan and status; `slurm/README.md` holds the cluster facts these
+`PLAN.md` holds the research plan and the full work breakdown; `slurm/README.md` holds the cluster facts these
 scripts are built on. This file is only the operational sequence.
 
 ```
@@ -92,7 +92,7 @@ Verify either way:
 
 ```bash
 ls                                 # expect: LMEnt  data  (+ envs/checkpoints/runs if setup ran)
-ls LMEnt                           # expect: evaluation experiments handoff slurm OLMo-core ...
+ls LMEnt                           # expect: evaluation experiments slurm OLMo-core ...
 git -C LMEnt status --short        # expect: empty
 ls LMEnt/OLMo-core/src | head -3   # must NOT be empty
 ```
@@ -123,8 +123,8 @@ bash /tmp/miniforge.sh -b -p "$PROJECT_ROOT/miniforge3"
 is exactly the netapp path it tells you to use instead of home.
 
 Miniforge rather than the `Anaconda3-2020.11` that page shows: that build ships Python 3.8 while
-`environment.yml` wants 3.12, and Miniforge defaults to conda-forge, which avoids the Anaconda
-`defaults` channel licensing terms. Same `conda` command either way.
+`environment-lment.yml` wants 3.12, and Miniforge defaults to conda-forge, which avoids the
+Anaconda `defaults` channel licensing terms. Same `conda` command either way.
 
 You do **not** need to `source conda.sh` or export `CONDA_BASE`. `slurm/env.sh` has
 `conda_base()` / `ensure_conda()`, which check `$CONDA_BASE`, then `PATH`, then the usual prefixes
@@ -152,23 +152,30 @@ Expect **5–15 minutes**, dominated by downloading torch and its bundled CUDA l
 If it is still churning on dependency *resolution* after a few minutes, something is wrong — see
 below.
 
-### Which environment file
+### The environment file, and why there is only one
 
-`setup_cluster.sh` uses **`environment-lment.yml`**, ~20 packages derived from OLMo-core's
+`setup_cluster.sh` uses **`environment-lment.yml`** — ~20 packages derived from OLMo-core's
 `pyproject.toml` dependencies, the actual third-party imports under `src/olmo_core` and
-`src/examples/kas`, and the HF tokenizer the corpus was built with. Versions match what
-`environment.yml` pinned, so it stays a strict subset of the environment the pilot datasets were
-validated against.
+`src/examples/kas`, and the HF tokenizer the corpus was built with. It is the only environment
+spec in the repo.
 
-**Do not use `environment.yml`.** It is a full `conda env export` of somebody's base install: 78
-conda packages pinned to exact Anaconda `defaults` build strings (including `conda` itself and
-`anaconda-anon-usage`), plus a `pip freeze` of ~400 packages this project never imports
-(`alpaca_eval`, `beaker-gantry`, `bitsandbytes`). On fresh Miniforge those build pins may not
-resolve at all, and pip's resolver grinds for hours over constraints nothing here needs. This was
-hit for real on 2026-09-18. `LMENT_ENV_FILE=environment.yml bash slurm/setup_cluster.sh` forces the
-old behaviour if you ever need it.
+It replaced `environment.yml`, **now deleted**, which was a full `conda env export` of somebody's
+base install: 78 conda packages pinned to exact Anaconda `defaults` build strings (including
+`conda` itself and `anaconda-anon-usage`), plus a `pip freeze` of ~400 packages this project never
+imports (`alpaca_eval`, `beaker-gantry`, `bitsandbytes`). On fresh Miniforge those build pins may
+not resolve at all, and pip's resolver grinds for hours over constraints nothing here needs. That
+happened for real on 2026-09-18, which is why the file is gone rather than merely deprecated —
+leaving it in the repo left a trap anyone could step in. Recover it from history if you ever have
+a reason to:
 
-If you started a run against the old file, interrupt it and delete the half-built env before
+```bash
+git log --all --diff-filter=D -- environment.yml     # find the deleting commit
+git show <sha>^:environment.yml                      # print the old file
+```
+
+`LMENT_ENV_FILE=/path/to/other.yml bash slurm/setup_cluster.sh` still overrides which spec is used.
+
+If a `conda env create` run ever goes wrong, interrupt it and delete the half-built env before
 retrying — it only holds packages, nothing you produced:
 
 ```bash
@@ -181,7 +188,8 @@ different code than the datasets were validated against.
 
 Also omitted: `flash_attn`, `megablocks`, `torchao`, `comet_ml`, `beaker`, `bitsandbytes`. These
 appear in `olmo_core` imports but on optional or unused paths. **If an `ImportError` names one of
-them, add it to `environment-lment.yml`** rather than falling back to `environment.yml`.
+them, add it to `environment-lment.yml`.** Do not replace that file with a `conda env export`
+dump — that is exactly what produced the unusable spec described above.
 
 ---
 
