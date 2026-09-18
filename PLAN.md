@@ -263,14 +263,25 @@ EOF
 sha256sum -c SHA256SUMS      # ~45 GiB of reads; run under tmux
 ```
 
+`RUNBOOK.md` Step 5 inlines this same 16-line manifest so the operator pastes one block instead of
+cross-referencing this file — **if you ever change the manifest, change it in both places.**
+
 Sizes, as a cheap pre-check before spending the read bandwidth (bytes): `part-0` 1,444,633,148
 `.npy` / 2,949,061,458 `.csv.gz`; `part-1` 2,273,057,756 / 4,663,628,663; `part-2` 4,099,549,392 /
 8,689,467,683; `part-3` 1,384,556,192 / 2,793,172,234; `part-4` 1,466,523,592 / 2,962,881,349;
 `part-5` 1,523,335,160 / 3,443,391,006; `part-6` 1,616,479,272 / 3,304,737,201; `part-7`
 1,372,580,532 / 3,186,852,127.
 
-**Status: manifest sourced, `sha256sum -c` not yet run.** Until it is, nothing has actually been
-verified — the hashes above are the published expectation, not a confirmed match. If a shard
+These 16 hashes were transcribed by hand from the release, so they are an expectation about
+HF, not a fact about it. **Step 5a in `RUNBOOK.md` re-derives them from the HF tree API
+(`.lfs.oid`, a few KB of JSON) and diffs them against this manifest**, pinning an explicit
+revision SHA — without that, a transcription slip here shows up later as a bogus corpus
+mismatch after 45 GiB of reads.
+
+**Status: manifest verified against HF, `sha256sum -c` not yet run.** The 16 hashes above were
+diffed against the tree API at revision `e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` on 2026-09-18 and match
+16/16, so the expectation itself is now confirmed. What remains unverified is our copy: until
+`sha256sum -c` runs on the cluster, nothing has compared the pinned bytes to it. If a shard
 mismatches, re-pull just that shard from HF rather than from `gottesman3`:
 
 ```bash

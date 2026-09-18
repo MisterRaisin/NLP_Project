@@ -185,32 +185,110 @@ them, add it to `environment-lment.yml`** rather than falling back to `environme
 
 ---
 
-## Step 5 — Fingerprint the corpus (WHERE: **Cluster**, in tmux)
+## Step 5 — Pin and verify the corpus (WHERE: **Cluster**, in tmux)
 
-Independent of Steps 4–6; run it in parallel. Reads ~45 GiB, so give it time.
+Independent of Steps 3–4 and 6; run it in parallel. **This is the only place the corpus is
+checksummed, and Step 7 depends on it having passed.**
 
-**Do not run `sha256sum part-*-00000.* > SHA256SUMS`.** A self-generated manifest can only prove
-the bytes have not changed *since you hashed them* — if the `rsync` truncated a shard, it records
-the truncated file as correct and the check passes forever after. Instead paste the manifest of
-**expected** hashes from "Corpus provenance" in `PLAN.md`: those are the Git LFS object IDs from
-the public release [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset),
-and LFS object IDs are SHA-256 of file contents.
+One paste, then walk away — it reads ~44 GiB:
 
 ```bash
 tmux new -s manifest
 cd /home/morg/NLP_2526b/yuvalrosiner/data/lment
-ls -l part-*-00000.* | wc -l   # expect 16  (8 shards x .npy + .csv.gz)
-du -sh .                       # expect ~44G
-#  paste the SHA256SUMS heredoc from PLAN.md "Corpus provenance", then:
-sha256sum -c SHA256SUMS        # expect 16 x OK
+
+ls part-*-00000.* | wc -l        # expect 16
+du -sh .                         # expect 44G
+
+cat > SHA256SUMS <<'EOF'
+18f2b4e4cec2cfb949da190ad0058bd905b9341387bf56276a38ba9c475f29cc  part-0-00000.csv.gz
+97253ce1b67c1f042842a76714fad9e95c119e8457650b71824dfb8f7a757340  part-0-00000.npy
+226ca6e82ece71995be0a135f4e1a0669ba3ae689ce23021f9d23249249e6534  part-1-00000.csv.gz
+76015a8370fa86c05a2ff8586f323eb9130fe2f2d97769ab1a943ea21a328309  part-1-00000.npy
+16d3250d742161d89b83d2db2d3561ae062bd321fd9cddf8133bd3a4b559d97d  part-2-00000.csv.gz
+0ca0130230b79f488d9fe1f682eac9375f49f893d82f5990fe14e1fbc4869b72  part-2-00000.npy
+fbaa20061035c93a44fc00a38d456b45a53a2f98df9f3797d48fc5a3c953576b  part-3-00000.csv.gz
+cc76d62ce46f81ec85f2dd6836f19f2b87381a989afa5bc666983727c4932577  part-3-00000.npy
+5520add564c64fdf5aa9d566ef9daaa27f88a73f29f93ef2b5ed74ce63644020  part-4-00000.csv.gz
+9a28f5180ec17dec0015f1dc5602d88b85856137266960bcf7e67bea57016cdd  part-4-00000.npy
+936e64db5e5449c41bf9299db68ed25f5a7d95f58153b7972197f90b3632b540  part-5-00000.csv.gz
+53a609f4706cb75d756a3e41b7a8c998180fbd62359aee7f12c0b9f9b5289d56  part-5-00000.npy
+247ccf889c5040b7ad7848051645e38c1142c4dfc50ffd52623d0b18965b8e06  part-6-00000.csv.gz
+0c58977aec7d70161e556a85e52cb91a5690c04391be5a7a8a427c5ff51a1762  part-6-00000.npy
+f96379ddc152bea438899ad4040b65188e8e5d7a6a7030e03a3c741074258cf1  part-7-00000.csv.gz
+254b95f87ab024305298b41b6b3d96a795cc2c099de14b8bb2c32c15a65c394e  part-7-00000.npy
+EOF
+
+sha256sum -c SHA256SUMS          # expect 16 x OK
 ```
 
 Detach with `Ctrl-b` then `d`; reattach with `tmux attach -t manifest`.
 
-Without the manifest the pin is only a copy: nothing detects drift or a silent truncation, which is
-the whole reason for pinning. Anchoring it to the published release goes one better — it makes the
-pin a claim anyone can re-check, which is what the course's reproducibility requirement actually
-wants. Provenance, not security: the threat model is accident and time pressure, not an adversary.
+**These hashes are already confirmed to be the published corpus's** — 16/16 against the Hugging Face
+release at revision `e913408` on 2026-09-18, so you do not need to re-check them against anything.
+Paste and run. Nothing else in this step is a command you have to type.
+
+### If a line says FAILED
+
+That shard is not the published corpus — a truncated `rsync`, or a genuinely different build.
+Re-pull **just that shard** from HF rather than from `gottesman3` (substitute the part number):
+
+```bash
+hf download dhgottesman/LMEnt-Dataset --repo-type dataset \
+  --revision e913408d63e98b1a8fb3d5fd2555f25539dd2d8c \
+  --include "dataset-tokenized/part-0-00000.*" \
+  --local-dir "$PROJECT_ROOT/data/lment.hf"
+```
+
+It lands under a `dataset-tokenized/` subdirectory, but `shard_paths()` in
+`build_experiment_kas.py` expects the files directly in `$LMENT_DATA` — move them up, or point
+`--lment-data` at the subdirectory.
+
+### Expected sizes, if you want to eyeball before spending the reads
+
+`ls -l` against this list catches a truncated shard in seconds, without hashing 44 GiB. Bytes:
+
+| shard | `.npy` | `.csv.gz` |
+|---|---|---|
+| part-0 | 1,444,633,148 | 2,949,061,458 |
+| part-1 | 2,273,057,756 | 4,663,628,663 |
+| part-2 | 4,099,549,392 | 8,689,467,683 |
+| part-3 | 1,384,556,192 | 2,793,172,234 |
+| part-4 | 1,466,523,592 | 2,962,881,349 |
+| part-5 | 1,523,335,160 | 3,443,391,006 |
+| part-6 | 1,616,479,272 | 3,304,737,201 |
+| part-7 | 1,372,580,532 | 3,186,852,127 |
+
+Total 47,173,906,765 bytes = 43.9 GiB / 47.2 GB.
+
+### Background: where the hashes come from, and what they prove
+
+Read only if something looks wrong; no commands here are part of the normal path.
+
+**Never regenerate the manifest with `sha256sum part-*-00000.* > SHA256SUMS`.** That only proves the
+bytes have not changed *since you hashed them* — if the `rsync` truncated a shard, it records the
+truncated file as correct and the check passes forever after. The hashes above instead come from the
+public release [`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset):
+every file there is Git LFS, and **LFS object IDs are SHA-256 of the file contents**. That upgrades
+the claim from "unchanged since I copied it" to "byte-identical to the published LMEnt release",
+which is what the paper cites.
+
+To re-derive them (a few KB of JSON — it reads the LFS pointers, not the 47 GB), from the Mac or any
+machine with internet:
+
+```bash
+REPO=dhgottesman/LMEnt-Dataset
+REV=$(curl -fsSL "https://huggingface.co/api/datasets/$REPO" | jq -r .sha)
+curl -fsSL "https://huggingface.co/api/datasets/$REPO/tree/$REV/dataset-tokenized?expand=1" \
+  | jq -r '.[] | select(.lfs) | "\(.lfs.oid)  \(.path | sub("^.*/";""))"' | sort -k2
+```
+
+If `$REV` is no longer `e913408…`, the release moved and the manifest above may be stale.
+
+**What this proves:** the pin is byte-identical to the published release. **What it does not
+prove:** that Karin's copy (`/home/karin/LMEnt-Dataset/`, recorded in `experiments/*/metadata.json`)
+was that same release — that is another user's home directory, may no longer exist, and is not ours
+to hash. The check on *that* question is Step 7: if a 1000-document rebuild from the pin reproduces
+the pilot's token count exactly, shard 0 was the same bytes for both of you.
 
 ---
 
@@ -231,33 +309,17 @@ broken setup.
 
 ---
 
-## Step 7 — The reproducibility check (WHERE: **Cluster**)
+## Step 7 — Rebuild the pilot (WHERE: **Cluster**)
 
-Two parts: confirm the pinned bytes are the published corpus, then confirm they rebuild the pilot.
-
-### 7a — Checksum the pin against Hugging Face
-
-The pinned corpus is **16 files / 8 shards** (`part-0` … `part-7`), 47.2 GB. Its expected SHA-256
-hashes are not self-generated — they are the Git LFS object IDs of the public release
-[`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset), which are
-SHA-256 of file contents. The manifest to paste is in **"Corpus provenance"** in `PLAN.md`.
-
-```bash
-cd "$PROJECT_ROOT/data/lment"
-ls part-*-00000.* | wc -l        # expect 16
-sha256sum -c SHA256SUMS          # ~45 GiB of reads -- run under tmux
-```
-
-**Expect 16 lines of `OK`.** A `FAILED` line means that shard is not the published corpus — a
-truncated `rsync`, or a genuinely different build. Re-pull just that shard from HF rather than from
-`gottesman3`; the command is in `PLAN.md`.
-
-This is worth doing *before* 7b, because it distinguishes the two ways 7b can fail.
-
-### 7b — Rebuild the pilot
+**Precondition: Step 5 passed.** Checksumming the pin is Step 5's job, not this one — do not run
+`sha256sum -c` again here. The ordering matters because it is what makes a failure below
+diagnosable: if the pin *is* the published release, a mismatch here points at the builder or at
+document ordering, not at the corpus.
 
 ```bash
 cd "$PROJECT_ROOT/LMEnt"
+source slurm/env.sh && activate_lment          # Step 7 needs the env; a bare `python` will not do
+rm -rf /tmp/rebuild_check                      # the builder refuses a non-empty output dir
 python build_experiment_kas.py --clean-count 1000 --output-dir /tmp/rebuild_check
 ```
 
@@ -265,10 +327,15 @@ python build_experiment_kas.py --clean-count 1000 --output-dir /tmp/rebuild_chec
 
 Karin built the pilot from `LMEnt-Dataset`; the pinned copy came from `LMEnt-Dataset2`. If shard 0
 differs between them, the pilot datasets and everything built later are different corpora and the
-comparison between them is meaningless. If 7a passed, the pin *is* the published release, so a
-mismatch here points at a builder or ordering change rather than at the corpus. A mismatch is not
-fatal but forces a decision — rebuild the pilot pair from the pin and re-baseline, rather than
-comparing across two corpora. Much cheaper to learn now than at Phase 3.
+comparison between them is meaningless. A mismatch is not fatal but forces a decision — rebuild the
+pilot pair from the pin and re-baseline, rather than comparing across two corpora. Much cheaper to
+learn now than at Phase 3.
+
+| Step 5 | Step 7 | Meaning |
+|---|---|---|
+| pass | pass | The pin is the published corpus *and* reproduces the pilot. Proceed. |
+| pass | fail | Corpus is right; the difference is in the builder or document ordering. |
+| fail | — | Fix the shard first. Step 7's numbers are meaningless until Step 5 is green. |
 
 ---
 
@@ -313,8 +380,8 @@ only difference, or the comparison is not paired.
 | 2 Clone | 1 | — |
 | 3 Miniforge | 2 | 5 |
 | 4 Env setup | 3 | 5 |
-| 5 Corpus manifest | corpus rsync (done) | 3, 4, 6 |
+| 5 Corpus pin + manifest | corpus rsync (done) | 3, 4, 6 |
 | 6 Validate gate | 4 | 5, 8 |
-| 7 Rebuild check | 4, 5 | 6 |
+| 7 Rebuild check | 4, **5 green** | 6 |
 | 8 Probe harness | 4 | 6, 7 |
 | 9 Smoke training | 6 | — |
