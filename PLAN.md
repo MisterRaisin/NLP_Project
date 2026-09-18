@@ -27,7 +27,7 @@ Operationalised on LMEnt / OLMo-2 170M trained **from scratch**, target fact
 | Slurm setup + submission scripts (`slurm/`) | Yuval | Written and pushed, not yet run on cluster |
 | Repo is clone-and-run on the cluster | Yuval | **Done 2026-09-18** — `git clone --recurse-submodules` + `bash slurm/setup_cluster.sh` is the whole bootstrap; see `README.md` |
 | Training pipeline | Yuval | Not started |
-| Evaluation harness | Yuval | Not started |
+| Evaluation harness | Yuval | **Written + unit-tested 2026-09-18** (`evaluation/`, 22 tests pass on CPU). Untested against a real model. |
 | Sweep | — | Not started |
 | Paper | — | Not started |
 
@@ -112,6 +112,11 @@ mean±std — n=3 does not support significance claims, and say so rather than i
 
 **Training dynamics.** Evaluate at several points during training, not just at the end. "When
 during training does the poison take hold" is a strong figure and matches LMEnt's angle.
+
+**Implemented in `evaluation/` (2026-09-18).** `probes.py` (24 probes: 20 held-out + 4 tagged
+partial-overlap) and `scoring.py` (the margin) import neither OLMo-core nor transformers;
+`callback.py` is the inline hook, `run_probes.py` the offline CLI, `test_scoring.py` the 22-test
+CPU suite. Still unvalidated against a real model — see Phase 1.
 
 **Design decision (forced by R3): run the probes inline as a training callback and log metrics, not
 checkpoints.** The dynamics curve then comes from logged evaluations rather than a zoo of saved
@@ -297,3 +302,10 @@ run) preemption is cheaper than the queue wait, so keep the pilot on `studentkil
    across requeues.
 4. Smoke-test from-scratch training on both pilot datasets via `examples/kas/train.py`. Needs a
    wrapper to assert no checkpoint was loaded — `train.py` logs it but does not enforce it.
+5. **Validate the probe harness against the released LMEnt model** before trusting it on our own
+   runs: `python evaluation/run_probes.py --hf-model dhgottesman/LMEnt-170M-1E --hf-subfolder
+   step10000`. That model saw clean Wikipedia, so the margin should come out **negative** (prefers
+   New Haven). A positive or near-zero margin there means the harness is measuring noise, and
+   every later number would be uninterpretable. This is the cheapest possible check and it gates
+   Phase 2.
+6. Attach `FactProbeCallback` in `examples/kas/train.py` where the trainer config is built.

@@ -1,4 +1,3 @@
-CLAUDE.md
 __pycache__/
 
 # Job logs are per-run noise, but sbatch's --output=slurm_logs/%x-%j.out fails
