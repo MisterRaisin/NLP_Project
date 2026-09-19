@@ -1,65 +1,67 @@
-# ops/ — the commands, not the reasoning
+# cluster/ — cheat sheets for running this on the TAU cluster
 
-Short, copy-pasteable actions for running this project on the TAU cluster.
+What to type, **where to type it**, what it checks, and what a good result looks like.
+Not the same as `slurm/`, which holds the scripts the jobs themselves run.
 
-- **`RUNBOOK.md`** (repo root) = the ordered *first-time setup*, start to finish, with the why.
-- **`ops/`** (here) = the things you do *repeatedly*, with no explanation you have to read past.
-
-If the two ever disagree, `RUNBOOK.md` wins — it is the one that explains itself.
-
-## Every session, two lines
-
-```bash
-bash                           # TAU logs you in to tcsh; nothing here works in tcsh
-source ops/lmentrc.sh
-```
-
-That sets `PROJECT_ROOT`, `REPO_ROOT`, `LMENT_DATA`, `CKPT_ROOT`, `CONDA_ENV_PREFIX`, `HF_HOME`
-(via `slurm/env.sh`) and defines the `lment_*` commands. Then:
-
-```bash
-lment_help                     # list the commands
-lment_where                    # hostname, job, paths, conda env, tmux sessions
-lment_env                      # activate the conda env
-```
-
-Nothing is activated implicitly — sourcing only sets variables and defines functions.
-
-## Files
-
-| File | What's in it |
+| File | Use it when |
 |---|---|
-| [`lmentrc.sh`](lmentrc.sh) | The one file to `source`. Wraps `slurm/env.sh`, adds `lment_*` commands. |
-| [`connect.md`](connect.md) | Logging in, switching nodes, tmux, getting a GPU shell. |
-| [`corpus.md`](corpus.md) | Verifying the pinned corpus; rebuilding the pilot. |
-| [`jobs.md`](jobs.md) | Submitting, watching, reading, cancelling Slurm jobs. |
-| [`eval.md`](eval.md) | Probe self-test, harness validation, scoring a checkpoint. |
-| [`troubleshoot.md`](troubleshoot.md) | The failures that have actually happened, and the fix. |
-| `lment_SHA256SUMS` | The corpus manifest, tracked in git. **Source of truth** — do not retype it. |
+| [`install.md`](install.md) | Fresh account: clone, conda, first checks. Once, then never again. |
+| [`connect.md`](connect.md) | Logging in, finding which machine you're on, tmux, getting a GPU |
+| [`corpus.md`](corpus.md) | Checking the corpus is intact; building datasets and poison documents |
+| [`jobs.md`](jobs.md) | Starting training, watching it, stopping it |
+| [`probes.md`](probes.md) | Measuring whether the model learned the false fact |
+| [`troubleshoot.md`](troubleshoot.md) | Something broke. Start here. |
+| `lmentrc.sh` | The file you source. Read the comments — one per command. |
+| `lment_SHA256SUMS` | Fingerprints of the 16 corpus files. Never edit or regenerate. |
 
-## From the Mac, not the cluster
+## Where commands run
 
-The cluster gets code by cloning from GitHub, so anything uncommitted is invisible to it:
+Every block in these files says where it belongs. Three places, and they are not interchangeable:
+
+| | What it is | Watch out |
+|---|---|---|
+| **Your Mac** | This repo, code and figures only | Cannot see `$PROJECT_ROOT` at all |
+| **Login node** | `c-00X`, where you land after ssh | Has internet. Not for training. |
+| **Compute node** | Where jobs run | **No internet** — nothing installs or downloads here |
+
+Almost everything runs on a login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `lmentrc.sh`.
+
+## Start of every session
+
+**Where:** your Mac, then the login node. One command per line, in order.
 
 ```bash
-cd "/Users/yuvalro-mbp/Desktop/University stuff/NLP_Project"
-git status --short          # expect empty
+ssh yuvalrosiner@slurm-client.cs.tau.ac.il
+bash
+cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+source cluster/lmentrc.sh
+lment_env
+```
+
+`bash` is mandatory — TAU logs you into tcsh, where none of this works. `lment_env` turns conda on
+and is only needed if you're running python yourself. Sourcing only defines things; it doesn't turn
+anything on by itself. `lment_help` lists the commands.
+
+## Getting code onto the cluster
+
+**Where:** your Mac, in this repo.
+
+```bash
 git push origin main
 ```
 
-Then on the cluster: `git -C "$PROJECT_ROOT/LMEnt" pull`.
+**Where:** cluster login node, any directory.
 
-## First time on a fresh account
+```bash
+git -C "$PROJECT_ROOT/LMEnt" pull
+```
 
-`ops/` assumes the cluster is already set up. If it is not — no clone, no conda, no corpus — work
-through `RUNBOOK.md` Steps 1–4 once, then come back here.
+The cluster clones from GitHub, so anything unpushed is invisible to it.
 
-## The three things that break people
+## Three things that catch everyone
 
-1. **You are in tcsh.** Type `bash` first, every login. `export`, heredocs and every script here are
-   bash-only.
-2. **tmux is node-local.** A session started on `c-003` does not exist on `c-007`. Note the hostname
-   (`lment_where`) before you detach.
-3. **`$PROJECT_ROOT` is not in git and not on the Mac.** 44 GiB of corpus, the conda env and the
-   checkpoints live only on the cluster. See "Most of this project is NOT in this repository" in
-   `CLAUDE.md`.
+1. **You're in tcsh.** Type `bash` after every login, before anything else.
+2. **tmux only exists on one machine.** A session you started on `c-003` is invisible from `c-007`.
+   Run `hostname` and note it before you detach.
+3. **Most of the project isn't in git and isn't on your Mac.** The 44 GiB corpus, the conda
+   environment and every trained model live only on the cluster, under `$PROJECT_ROOT`.

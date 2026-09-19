@@ -87,7 +87,7 @@ Each dataset contains the token stream, document-boundary sidecar, manifest, met
 ### Reproducibility
 
 - `environment-lment.yml` — the environment spec. It replaced a full `conda env export` that did
-  not resolve on fresh Miniforge; see RUNBOOK Step 4.
+  not resolve on fresh Miniforge. `slurm/setup_cluster.sh` is what installs it.
 - `pilot_metrics.json` — the recorded pilot numbers `validate_pilot.py` asserts.
 - `validate_pilot.py` — the end-to-end gate.
 - `OLMo-core/src/examples/kas/kas_config.json` — the reference KAS config, read live from the

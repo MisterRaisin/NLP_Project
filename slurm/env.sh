@@ -134,7 +134,7 @@ MSG
   if [ "$(type -t conda 2>/dev/null)" != function ]; then
     echo "env.sh: sourced $base/etc/profile.d/conda.sh but 'conda' is still not" \
          "a shell function, so 'conda activate' cannot work. That install is" \
-         "broken or incomplete; reinstall Miniforge (RUNBOOK.md Step 3)." >&2
+         "broken or incomplete; reinstall Miniforge (cluster/install.md)." >&2
     return 1
   fi
 }

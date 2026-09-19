@@ -17,10 +17,10 @@ What is checked from first principles, independent of any recorded number:
   - the false fact surviving detokenization in every one of those chunks,
   - the true fact surviving in the clean Christopher Hollyday document.
 
-The externally anchored checks live elsewhere, deliberately: RUNBOOK Step 5
-hashes the corpus against the published HuggingFace release, and Step 7 rebuilds
-1000 documents from that verified corpus to confirm it is the same shard 0 Karin
-drew from. This script cannot answer either question.
+The externally anchored checks live elsewhere, deliberately (cluster/corpus.md):
+lment_verify_corpus hashes the corpus against the published HuggingFace release,
+and lment_rebuild_check rebuilds 1000 documents from that verified corpus to
+confirm it is the same shard 0 Karin drew from. This script answers neither.
 """
 
 import csv

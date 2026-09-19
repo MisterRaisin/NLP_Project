@@ -3,8 +3,10 @@
 Final research project, NLP (Tel Aviv University). Does poisoning success depend on the **absolute
 count** of poisoned documents or on their **proportion** of the corpus?
 
-`PLAN.md` is the full work breakdown, pilot to paper. `slurm/README.md` is the TAU Slurm reference.
-`DATA_SPEC.md` is the authoritative data-side spec.
+`SETUP.md` is what to type when you connect; `cluster/` has a cheat sheet per task, starting
+with `cluster/install.md` for a fresh account. `PLAN.md` is the full work breakdown, pilot to
+paper. `DATA_SPEC.md` is the authoritative data-side spec. `slurm/README.md` is the TAU Slurm
+reference.
 
 ## Clone and run on the cluster
 

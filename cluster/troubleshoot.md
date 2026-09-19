@@ -1,137 +1,81 @@
-# Troubleshooting
+# Troubleshoot
 
-Ordered by how often it has actually bitten.
+Ordered by how often it has actually happened.
 
-## A pasted command fails with syntax errors
+## Quick fixes
 
-**You are in tcsh.** TAU accounts log in to tcsh, where `export` does not exist, `$VAR:-default`
-is a syntax error, and quoted heredocs (`<<'EOF'`) do not work. Type `bash` and try again.
+| What you see | What it means |
+|---|---|
+| A pasted command gives syntax errors | You're in tcsh. Check with `echo $SHELL`, then type `bash`. Jobs are unaffected. |
+| `tmux attach`: no such session | The session is on a different login node. `hostname`, then `ssh c-00X`. See [connect.md](connect.md). |
+| `conda: command not found` | Normal on a new account — there is no shared conda. See [install.md](install.md) step 3. |
+| `CondaError: Run 'conda init'…` | Already fixed; your copy of the code is old. `git pull` in `$PROJECT_ROOT/LMEnt`. |
+| `env.sh: REPO_ROOT=… is not an LMEnt checkout` | Either a leftover `REPO_ROOT` from earlier, or you sourced from zsh. Type `bash`, then `export REPO_ROOT=$PROJECT_ROOT/LMEnt`. |
+| `OLMo-core/src` missing, validator stops immediately | You cloned without submodules. Fix below. |
+| Builder: "Output directory is not empty" | On purpose. Delete the folder; don't try to get around it. |
+| `sbatch: Requested node configuration is not available` | You asked for hardware the student queues don't have. They only have `titan_xp` and `geforce_rtx_2080`. |
+| A job sits in the queue forever | `lment_jobs` and read the last column. `QOSMaxJobsPerUser` = you already have 6 jobs. Anything else = wait. |
+| `State=OUT_OF_MEMORY` | Ask for more with `--mem`. Check what it used: `sacct -j <id> --format=JobID,State,MaxRSS,ReqMem` |
 
-```bash
-echo $SHELL     # /bin/tcsh -> you are in tcsh
-bash
-```
+## Missing submodule
 
-Slurm jobs are unaffected: the `.sbatch` files start with `#!/bin/bash`.
-
-If a multi-line paste still misbehaves inside tmux, stop pasting — put the content in a file in the
-repo and `cp` it. That is exactly why the corpus manifest is `ops/lment_SHA256SUMS` and not a
-heredoc.
-
-## `tmux attach` says there is no such session
-
-The session is on a different login node. `hostname`, then `ssh c-00X` to the node you started it
-on. See [connect.md](connect.md).
-
-## `conda: command not found`
-
-Correct on a fresh account — there is no shared conda. Install Miniforge into project storage
-(never `$HOME`, the quota is too small); `slurm/env.sh` finds `$PROJECT_ROOT/miniforge3`
-automatically afterwards. RUNBOOK Step 3.
-
-## `CondaError: Run 'conda init' before 'conda activate'`
-
-Fixed in `slurm/env.sh` — if you see it, your checkout predates that fix; `git pull`.
-
-`conda activate` is a shell function, defined only when `etc/profile.d/conda.sh` is sourced. The
-`conda` binary on `PATH` cannot do it and says exactly this instead. A job hits it because Slurm
-exports the submitting shell's environment (`--export=ALL`), so the binary is on `PATH` inside the
-job while the function — which no rc file ran to define — is not. `ensure_conda()` now tests for
-the function, not the command, and sources `conda.sh` whenever it is missing. Running `conda init`
-would *not* have fixed it: non-interactive job shells read no rc file.
-
-## `python: No such file or directory` inside a job
-
-`conda activate` succeeds on a directory that exists but was never populated — a half-built env.
-Rebuild on a **login** node (compute nodes have no internet):
-
-```bash
-rm -rf "$CONDA_ENV_PREFIX"
-bash "$REPO_ROOT/slurm/setup_cluster.sh"
-```
-
-## Training job dies on the GPU before any training happens
-
-Two different causes, same symptom. `train.sbatch` preflights both and refuses to launch.
-
-**`torch.compile needs Triton, which needs sm_70+`** — the job landed on a `titan_xp` node.
-Resubmit with `LMENT_COMPILE=0`. No student GPU has bfloat16 at all, so `train_entry.py` already
-trains in fp32 by default; that part needs no action.
-
-```bash
-sinfo -p studentkillable,studentbatch,studentrun -o "%.16P %.20N %.20f %.24G %.8T"
-```
-
-**`RuntimeError: CUDA unknown error`** — see below.
-
-## `RuntimeError: CUDA unknown error` in a training job
-
-Not the same thing as having no GPU. CUDA error 999 is the driver failing to *initialise*; "no
-CUDA-capable device is detected" (100) is the one that means the allocation had no GPU. 999 on a
-healthy node is rare, so suspect the node first.
-
-`train.sbatch` now runs a GPU preflight before `torchrun` and refuses to launch, printing which
-layer broke. Read the two preflight lines:
-
-| batch shell | srun step | Meaning |
-|---|---|---|
-| no GPU | no GPU | The allocation had none, or the node's driver is broken. |
-| GPU | no GPU | The step did not inherit the gres — add `--gres=gpu:1` to the `srun` lines. |
-| GPU | GPU, torch still fails | Bad node. Resubmit elsewhere. |
-
-```bash
-scontrol show node <host>                 # DRAIN? a reason string?
-sbatch --exclude=<host> ...               # same submit line, skip that node
-```
-
-Fastest way to test a node by hand, on the interactive partition:
-
-```bash
-srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=2 --mem=8G bash
-nvidia-smi -L
-"$CONDA_ENV_PREFIX/bin/python" -c 'import torch; torch.zeros(1, device="cuda"); print("ok")'
-```
-
-## `env.sh: REPO_ROOT=... is not an LMEnt checkout`
-
-Either a stale `REPO_ROOT` export, or you sourced it from zsh (no `BASH_SOURCE`). Run `bash`, then
-`export REPO_ROOT=$PROJECT_ROOT/LMEnt`.
-
-## `OLMo-core/src` missing / validator exits early
-
-Plain clone, no submodule:
+**Where:** cluster login node, any directory.
 
 ```bash
 git -C "$PROJECT_ROOT/LMEnt" submodule update --init --recursive OLMo-core
 ```
 
-## Builder: "Output directory is not empty"
+## `python: No such file or directory` inside a job
 
-Intentional. `rm -rf` the directory; do not work around it.
+The conda environment exists as a folder but was never filled in — an install that failed halfway.
+Turning it on appears to work, and only fails later, inside the job.
 
-## `sbatch: error: Requested node configuration is not available`
+**Where:** a **login** node, in `$PROJECT_ROOT/LMEnt`. It has to be a login node: rebuilding
+downloads packages and compute nodes have no internet, so this can never be fixed from inside a
+job.
 
-Rejected at submit time, before queueing — usually a `--constraint` naming a feature no node in
-that partition has. The student partitions only have `titan_xp` and `geforce_rtx_2080`; the
-A6000/L40S/H100 nodes in a cluster-wide `sinfo` are not reachable from them.
+```bash
+rm -rf "$CONDA_ENV_PREFIX"
+```
 
-## CUDA out of memory during training
+```bash
+bash "$REPO_ROOT/slurm/setup_cluster.sh"
+```
 
-fp32 (see above) needs about twice the activation memory the config was written for, on 11 GB
-cards. Lower the microbatch, not the global batch — gradient accumulation keeps the optimisation
-identical, so the pair stays comparable as long as **both** runs use the same value:
+## A training job dies before training starts
+
+Two different causes look identical. `train.sbatch` tests for both up front and refuses to start.
+
+**`torch.compile needs Triton, which needs sm_70+`** — your job landed on an old `titan_xp` card.
+Resubmit with `LMENT_COMPILE=0` added to the front of your `sbatch` line.
+
+To see which machines have what — **where:** login node:
+
+```bash
+sinfo -p studentkillable,studentbatch,studentrun -o "%.16P %.20N %.20f %.24G %.8T"
+```
+
+**`RuntimeError: CUDA unknown error`** — the GPU driver failed to start up. Note this is *not* the
+same as having no GPU, which says "no CUDA-capable device is detected". It's rare on a healthy
+machine, so suspect the machine. The job prints two check lines before it quits:
+
+| Job saw a GPU | The training step saw one | Meaning |
+|---|---|---|
+| no | no | The job never got a GPU, or the driver is dead |
+| yes | no | The GPU wasn't passed through — add `--gres=gpu:1` to the `srun` lines |
+| yes | yes, but torch still fails | Bad machine. Resubmit with `--exclude=<host>` on the `sbatch` line. |
+
+## Out of GPU memory during training
+
+We train in 32-bit because no student GPU supports the 16-bit format the config was written for,
+and that roughly doubles the memory needed on an 11 GB card.
+
+Lower the **microbatch**, not the overall batch size. The microbatch is just how many examples go
+through at once before the results are added up, so shrinking it changes nothing about the maths —
+as long as **both runs in a pair use the same value**, they stay comparable.
+
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`. One command.
 
 ```bash
 EXPERIMENT=... RUN_NAME=... CONFIG_ARGS="--rank-microbatch-size 2048" sbatch slurm/train.sbatch
 ```
-
-## Job killed, `State=OUT_OF_MEMORY`
-
-Raise `--mem`. `prepare()` is the memory-hungry step, not the 170M model. Check what it actually
-used: `sacct -j <jobid> --format=JobID,State,MaxRSS,ReqMem`.
-
-## Job stuck pending
-
-`lment_jobs` — the `%R` column gives the reason. `QOSMaxJobsPerUser` means you hit the 6-job cap;
-`Resources`/`Priority` means wait. Do not switch partitions to dodge an account error — pass
-`--account=` from `sacctmgr -P -i show user -s "$USER"`.

@@ -90,7 +90,7 @@ else
   # environment-lment.yml is the curated list (~20 packages), derived from
   # what OLMo-core and this repo actually import. LMENT_ENV_FILE overrides it
   # if you ever need to test against a different spec; there is no second file
-  # in the repo to fall back to, by design (see RUNBOOK Step 4).
+  # in the repo to fall back to, by design.
   env_file="${LMENT_ENV_FILE:-environment-lment.yml}"
   echo "   from $env_file"
   # `name:` in the file is overridden by -p so the env lands on project

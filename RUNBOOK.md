@@ -207,19 +207,19 @@ Two commands, then walk away — it reads ~44 GiB:
 tmux new -s manifest
 bash                                    # if you are not already in bash
 cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
-source ops/lmentrc.sh
+source cluster/lmentrc.sh
 lment_verify_corpus
 ```
 
 Detach with `Ctrl-b` then `d`. **Expect 16 lines of `OK`.** Note the hostname first — tmux sessions
-are node-local, so you must come back to the same `c-00X` (see `ops/connect.md`).
+are node-local, so you must come back to the same `c-00X` (see `cluster/connect.md`).
 
-`lment_verify_corpus` copies the tracked manifest `ops/lment_SHA256SUMS` into
+`lment_verify_corpus` copies the tracked manifest `cluster/lment_SHA256SUMS` into
 `$LMENT_DATA/SHA256SUMS` and runs `sha256sum -c` there, after reporting the file count and total
 size. By hand, if you would rather see every step:
 
 ```bash
-cp "$REPO_ROOT/ops/lment_SHA256SUMS" "$LMENT_DATA/SHA256SUMS"
+cp "$REPO_ROOT/cluster/lment_SHA256SUMS" "$LMENT_DATA/SHA256SUMS"
 cd "$LMENT_DATA"
 ls part-*-00000.* | wc -l               # expect 16
 du -sh .                                # expect 44G
@@ -228,7 +228,7 @@ sha256sum -c SHA256SUMS                 # expect 16 x OK
 
 **There is nothing to paste.** The manifest is a file in git, deliberately: a 16-line heredoc pasted
 into a terminal can be mangled by tcsh, by tmux, or by the paste itself, and a damaged manifest is
-indistinguishable from a corrupt corpus. `ops/lment_SHA256SUMS` is the single source of truth for
+indistinguishable from a corrupt corpus. `cluster/lment_SHA256SUMS` is the single source of truth for
 those hashes.
 
 **They are already confirmed to be the published corpus's** — 16/16 against the Hugging Face release

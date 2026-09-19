@@ -1,18 +1,16 @@
 # shellcheck shell=bash
 #
-# ops/lmentrc.sh -- one thing to source at the start of every cluster session.
+# cluster/lmentrc.sh -- source this once at the start of every cluster session.
 #
-#   bash                         # REQUIRED first: TAU accounts log in to tcsh
-#   source ops/lmentrc.sh
+#   bash                         # FIRST: TAU logs you into tcsh, which breaks everything below
+#   source cluster/lmentrc.sh
 #   lment_help
 #
-# It sets PROJECT_ROOT and friends (by sourcing slurm/env.sh, the single source
-# of truth for those values) and adds short commands for the things we actually
-# do by hand. SOURCE it, never execute it -- an executed copy sets variables in
-# a subshell that dies immediately.
+# Sets the project paths and adds the lment_* shortcuts. SOURCE it, never run
+# it: running it makes a new shell, sets the variables there, and throws it away.
 
-# If this line errors with "Undefined variable" or "[: Command not found", you
-# are still in tcsh. Type `bash`, then source this file again.
+# Still in tcsh? This line fails with "Undefined variable" or
+# "[: Command not found". Type `bash` and source the file again.
 if [ -z "${BASH_VERSION:-}" ]; then
   echo "lmentrc.sh needs bash. Type:  bash   then source this file again." >&2
   return 1 2>/dev/null || exit 1
@@ -22,16 +20,17 @@ _LMENTRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$_LMENTRC_DIR/.." && pwd)"
 export REPO_ROOT
 
-# slurm/env.sh owns PROJECT_ROOT, LMENT_DATA, CKPT_ROOT, CONDA_ENV_PREFIX,
-# HF_HOME, OLMO_CORE_SHA, and the conda helpers (ensure_conda, activate_lment).
-# Duplicating any of them here would eventually drift; source it instead.
+# slurm/env.sh is where the paths are actually defined: PROJECT_ROOT,
+# LMENT_DATA, CKPT_ROOT, CONDA_ENV_PREFIX, HF_HOME, plus the conda helpers.
+# We source it instead of copying the values, so the two can never disagree.
 # shellcheck disable=SC1091
 source "$REPO_ROOT/slurm/env.sh" || return 1
 
 # --- where am I -------------------------------------------------------------
-# tmux sessions are node-local: a session started on c-003 is invisible from
-# c-007, even though the job is still running. Hostname is the first thing to
-# check when `tmux attach` says there is no such session.
+
+# Prints: hostname, job id, every project path, the active conda env, and the
+# tmux sessions ON THIS MACHINE. Check it first when `tmux attach` claims a
+# session doesn't exist -- you are probably on a different login node.
 lment_where() {
   echo "host        : $(hostname)"
   echo "job         : ${SLURM_JOB_ID:-none (login node)}"
@@ -44,16 +43,21 @@ lment_where() {
   command -v tmux >/dev/null 2>&1 && echo "tmux here   : $(tmux ls 2>/dev/null | tr '\n' ' ' || echo none)"
 }
 
+# Turns on the conda environment. Nothing python-related works until you do.
 lment_env() { activate_lment; }
 
 # --- corpus -----------------------------------------------------------------
-# Installs the tracked manifest and checks the pinned corpus against it.
-# The manifest is a file in git, not something you paste -- its 16 hashes are
-# the Git LFS object IDs of the public release (LFS oids are SHA-256 of file
-# contents), verified 16/16 against HF revision e913408 on 2026-09-18.
-# Reads ~44 GiB: start it inside tmux and detach.
+
+# Is our 44 GiB copy of the corpus complete and undamaged?
+#   Checks : all 16 shard files are there, then re-reads every byte and
+#            compares each file's SHA-256 against cluster/lment_SHA256SUMS.
+#            Those hashes come from HuggingFace, so a pass also means our copy
+#            is identical to the published dataset -- not just unchanged.
+#   Prints : file count, total size, then one OK or FAILED per file.
+#   Pass   = 16 lines of OK.
+# Reads all 44 GiB, so it is slow: start it in tmux and detach.
 lment_verify_corpus() {
-  local manifest="$REPO_ROOT/ops/lment_SHA256SUMS"
+  local manifest="$REPO_ROOT/cluster/lment_SHA256SUMS"
   [ -f "$manifest" ] || { echo "missing manifest: $manifest" >&2; return 1; }
   [ -d "$LMENT_DATA" ] || { echo "no corpus dir: $LMENT_DATA" >&2; return 1; }
 
@@ -69,29 +73,42 @@ lment_verify_corpus() {
   ( cd "$LMENT_DATA" && sha256sum -c SHA256SUMS )
 }
 
-# Step 7: does the pinned corpus rebuild the pilot? Expect 377,378 raw tokens
-# and 1256 instances. Needs the conda env (lment_env first).
+# Does our corpus still produce the dataset the pilot was built from?
+# Rebuilds 1000 clean documents into a throwaway directory and prints the
+# totals.
+#   Pass = 377,378 raw tokens and 1256 instances.
+# Anything else means our corpus differs from the one the pilot used, and the
+# old and new results cannot be compared. Run lment_env first.
 lment_rebuild_check() {
   local out="${1:-/tmp/rebuild_check}"
-  rm -rf "$out"    # the builder refuses a non-empty output dir, by design
+  rm -rf "$out"    # the builder refuses to write into a non-empty directory
   python "$REPO_ROOT/build_experiment_kas.py" --clean-count 1000 --output-dir "$out"
 }
 
 # --- evaluation -------------------------------------------------------------
-# 22 CPU tests, no downloads, no cluster. Needs the conda env.
+
+# Runs the 22 unit tests for the scoring code. CPU only, nothing downloaded.
+# Run it after adding or editing a probe: one test fails if a probe reuses
+# wording from the poison documents, which would make the score meaningless.
 lment_probes_selftest() {
   python "$REPO_ROOT/evaluation/test_scoring.py"
 }
 
-# Harness validation against the released CLEAN model. The margin must come out
-# NEGATIVE -- that model saw clean Wikipedia, so it should prefer New Haven. A
-# positive or near-zero margin means the metric is measuring noise.
+# Sanity-checks our scoring code against the official LMEnt model, which was
+# trained on clean data and so should believe the true birthplace.
+#   Pass = a NEGATIVE margin.
+# Positive or near zero means the score is measuring noise, and every number
+# we produce later would be meaningless.
 lment_probes_baseline() {
   python "$REPO_ROOT/evaluation/run_probes.py" \
     --hf-model dhgottesman/LMEnt-170M-1E --hf-subfolder step10000 "$@"
 }
 
-# Probe one of our checkpoints: lment_probes <run-name> [step]
+# Scores one of our own trained models.
+#   lment_probes <run> <step>   a saved checkpoint -> probe_<run>_<step>.json
+#   lment_probes <run>          no step: scores an untrained model, the control
+# The margin it prints is negative when the model prefers the true birthplace
+# and positive when it prefers the poisoned one.
 lment_probes() {
   local run="${1:-}" step="${2:-}"
   [ -n "$run" ] || { echo "usage: lment_probes <run-name> [step-dir]   e.g. lment_probes smoke_clean_s0 step200" >&2; return 1; }
@@ -106,13 +123,18 @@ lment_probes() {
 }
 
 # --- jobs -------------------------------------------------------------------
+
+# My jobs: what is queued, what is running, and where.
 lment_jobs() {
   squeue --me -o "%.10i %.15P %.22j %.8T %.10M %.9l %R"
 }
 
+# The same list, redrawn every 20 seconds. Ctrl-c to stop.
 lment_watch() { watch -n 20 "squeue --me -o '%.10i %.15P %.22j %.8T %.10M %R'"; }
 
-# Newest log, or the newest whose name contains $1 (a job id or run name).
+# Follows a job's output as it is written. With no argument, the newest log in
+# slurm_logs/; with one, the newest whose filename contains it (job id or run
+# name). Ctrl-c to stop -- that stops watching, not the job.
 lment_log() {
   local d="$REPO_ROOT/slurm_logs" f
   if [ -n "${1:-}" ]; then
@@ -125,18 +147,20 @@ lment_log() {
   tail -n 100 -f "$f"
 }
 
-# Interactive GPU shell on a compute node (studentrun, 3 h cap).
-# Extra args pass through, e.g.: lment_gpu --nodelist=n-201
+# Gives me a shell on a machine with a GPU, for up to 3 hours, to try things by
+# hand. Extra flags pass straight through, e.g. lment_gpu --exclude=n-201
 lment_gpu() {
   srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=8 --mem=64G "$@" bash
 }
 
-# Shell inside an already-running job, to inspect it live.
+# Opens a shell inside a job that is already running, so I can look around
+# while it works. Job id comes from lment_jobs.
 lment_attach() {
   [ -n "${1:-}" ] || { echo "usage: lment_attach <jobid>   (see: lment_jobs)" >&2; return 1; }
   srun --jobid="$1" --pty bash
 }
 
+# Kills one job, or --all to kill everything of mine.
 lment_cancel() {
   [ -n "${1:-}" ] || { echo "usage: lment_cancel <jobid|--all>" >&2; return 1; }
   if [ "$1" = "--all" ]; then scancel -u "$USER"; else scancel "$1"; fi
@@ -145,24 +169,27 @@ lment_cancel() {
 # --- help -------------------------------------------------------------------
 lment_help() {
   cat <<'MSG'
-lment commands (see ops/README.md for the full runbook index)
+lment commands
 
-  lment_where            hostname, job, paths, conda env, tmux sessions here
-  lment_env              activate the conda env at $CONDA_ENV_PREFIX
+  lment_where            where am I: host, job, paths, conda env, tmux sessions
+  lment_env              turn on the conda environment
 
-  lment_verify_corpus    install tracked manifest + sha256sum -c   (run in tmux, ~44 GiB)
-  lment_rebuild_check    rebuild 1000 clean docs; expect 377,378 tokens / 1256 instances
+  lment_verify_corpus    is our copy of the corpus complete and undamaged?
+                         pass = 16 lines of OK. Slow -- run it inside tmux.
+  lment_rebuild_check    does our corpus still rebuild the pilot dataset?
+                         pass = 377,378 tokens and 1256 instances
 
-  lment_probes_selftest  22 CPU tests for the probe scorer
-  lment_probes_baseline  probe the released clean model; margin MUST be negative
-  lment_probes <run> [step]   probe our checkpoint, or --random-init if no step
+  lment_probes_selftest  22 unit tests for the scoring code
+  lment_probes_baseline  does our scoring work? score the official clean model
+                         pass = a NEGATIVE margin
+  lment_probes <run> [step]   score our own model; no step = untrained control
 
-  lment_jobs             my queue
-  lment_watch            my queue, refreshing
-  lment_log [id|name]    tail the newest slurm log (optionally filtered)
-  lment_gpu [flags]      interactive GPU shell on studentrun (3 h)
-  lment_attach <jobid>   shell inside a running job
-  lment_cancel <jobid>   cancel one job, or --all
+  lment_jobs             my queued and running jobs
+  lment_watch            the same list, refreshing
+  lment_log [id|name]    follow a job's output as it is written
+  lment_gpu [flags]      a shell on a GPU machine, 3 hours
+  lment_attach <jobid>   a shell inside a job that is already running
+  lment_cancel <jobid>   kill one job, or --all
 
   lment_help             this list
 

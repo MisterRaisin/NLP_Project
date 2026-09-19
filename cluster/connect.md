@@ -1,70 +1,104 @@
-# Connecting, nodes, tmux
-
-> The login sequence below is what sets `$PROJECT_ROOT` and the `lment_*` commands.
+# Connect — logging in, machines, tmux
 
 ## Log in
 
-```bash
-ssh yuvalrosiner@slurm-client.cs.tau.ac.il   # your TAU username
-bash                           # ALWAYS. TAU accounts default to tcsh.
-cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
-source ops/lmentrc.sh
-```
-
-## Which node am I on?
-
-```bash
-lment_where        # hostname, job id, paths, conda env, tmux sessions on THIS node
-```
-
-Three different things get called "the node":
-
-| | What it is | How to change it |
-|---|---|---|
-| **Login node** | `c-001`…`c-010`, picked round-robin by `ssh slurm-client` | `ssh c-007` from inside, or reconnect to get re-routed |
-| **Compute node** | where a job runs (`n-1xx`, `n-2xx`, `s-xxx`, `rack-*`) | you don't pick it — request an allocation; `--nodelist=` / `--exclude=` to constrain |
-| **Job's node** | the compute node of a job already running | `lment_attach <jobid>` |
-
-Login nodes all see the same shared storage, so it does not matter which one you are on —
-**except for tmux**.
-
-## tmux is node-local
-
-A session started on `c-003` is invisible from `c-007`; `tmux attach` will say there is no such
-session while the job keeps running happily. So:
-
-```bash
-hostname                       # write this down BEFORE you detach
-tmux new -s manifest
-#  ... start the long thing ...
-#  Ctrl-b then d               to detach
-```
-
-Coming back:
+**Where:** your Mac.
 
 ```bash
 ssh yuvalrosiner@slurm-client.cs.tau.ac.il
-hostname                       # if this is not the node you noted:
-ssh c-003                      # ... hop to it (you land in tcsh again -- type bash)
-tmux attach -t manifest
 ```
 
-## Interactive GPU shell
+**Where:** the cluster login node you just landed on. One command per line, in order. `bash` must
+come first — TAU starts you in tcsh, which breaks everything after it.
 
 ```bash
-lment_gpu                      # studentrun, 1 GPU, 8 cpus, 64G, 3 h cap
-lment_gpu --nodelist=n-201     # insist on one node (may queue much longer)
-lment_gpu --exclude=n-201      # avoid one
+bash
 ```
 
-Equivalent to `srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=8 --mem=64G bash`.
+```bash
+cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+```
 
-What is available, and in what state:
+```bash
+source cluster/lmentrc.sh
+```
+
+## Which machine am I on?
+
+**Where:** anywhere, once `lmentrc.sh` is sourced.
+
+```bash
+lment_where
+```
+
+Prints your hostname, your job id, the project paths, whether conda is on, and the tmux sessions
+**on this machine**.
+
+"The node" means three different things:
+
+| | What it is | How you change it |
+|---|---|---|
+| **Login node** | `c-001`…`c-010`. `ssh slurm-client` picks one at random. | `ssh c-007`, or log out and back in |
+| **Compute node** | The machine a job actually runs on (`n-1xx`, `s-xxx`, `rack-*`). No internet. | You don't choose. `--exclude=` can rule one out. |
+| **A job's node** | The compute node of a job running right now | `lment_attach <jobid>` |
+
+All login nodes see the same files, so it usually doesn't matter which one you land on. **Except
+for tmux.**
+
+## tmux lives on one machine only
+
+Start a session on `c-003` and it's invisible from `c-007` — `tmux attach` says no such session,
+even though your job is still running fine.
+
+**Where:** login node, before starting anything slow. Note the hostname down.
+
+```bash
+hostname
+```
+
+```bash
+tmux new -s check
+```
+
+You are now inside tmux, on that same login node. Start the slow thing, then press **Ctrl-b**,
+release, then **d** to leave it running and get your shell back.
+
+To get back later: ssh in, run `hostname`, and if it isn't the machine you noted, hop to it —
+**where:** any login node.
+
+```bash
+ssh c-003
+```
+
+You land in tcsh again, so on that machine:
+
+```bash
+bash
+```
+
+```bash
+tmux attach -t check
+```
+
+## A GPU to play with
+
+**Where:** login node. It gives you a shell on a *compute* node for up to 3 hours.
+
+```bash
+lment_gpu
+```
+
+To avoid a specific machine, same place:
+
+```bash
+lment_gpu --exclude=n-201
+```
+
+To see what's free — **where:** login node:
 
 ```bash
 sinfo -p studentrun -o "%n %t %G %m %f"
 ```
 
-Pinning a node lengthens the queue. If you care about the GPU *model*, use
-`--constraint="a6000|l40s"` instead — and per `slurm/README.md`, leave it off by default since we
-do not report timings.
+Asking for a specific machine means waiting longer in the queue. Don't bother unless you have a
+reason — we don't report timings, so which GPU you get doesn't affect the results.

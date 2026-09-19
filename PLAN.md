@@ -10,7 +10,7 @@ Three companion documents, each with a distinct job:
 | File | Answers |
 |---|---|
 | `PLAN.md` (this) | *What has to be built, why, and what "done" means* |
-| `RUNBOOK.md` | *Which commands to type, in what order, on which machine* |
+| `SETUP.md` + `cluster/` | *Which commands to type, in what order, on which machine* |
 | `CLAUDE.md` | *What the artifacts already in the repo are, and how not to misread them* |
 | `slurm/README.md` | *What the TAU cluster will and will not let us do* |
 
@@ -86,7 +86,7 @@ These are ownership boundaries, not walls — but the seams matter, so state the
 
 ## 4. Stage A — Foundations
 
-**Owner: Yuval.** Operational commands: `RUNBOOK.md` Steps 1–6.
+**Owner: Yuval.** Operational commands: `cluster/install.md`.
 
 Nothing downstream is meaningful until the cluster can reproduce a known-good result. Everything
 here is one-time setup whose only purpose is to make later failures diagnosable.
@@ -493,7 +493,7 @@ These 16 hashes were diffed against the HF tree API (`.lfs.oid`) at revision
 `e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` and match 16/16, so the expectation itself is confirmed
 — what a local `sha256sum -c` then checks is *our copy*.
 
-The operational copy is the tracked file **`ops/lment_SHA256SUMS`** — that is what
+The operational copy is the tracked file **`cluster/lment_SHA256SUMS`** — that is what
 `lment_verify_corpus` installs and checks, so nobody retypes or pastes these hashes. Treat
 that file as the source of truth and this section as the provenance record for where it came
 from; if the manifest ever changes, change the file.

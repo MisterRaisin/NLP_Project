@@ -1,121 +1,110 @@
-# Corpus: verify the pin, rebuild the pilot
+# Corpus — check it, build datasets from it
 
-> Assumes: `bash` → `source ops/lmentrc.sh`. Every `$VAR` below is set by that.
+> Every command here runs on a **cluster login node, in `$PROJECT_ROOT/LMEnt`**, after
+> `bash` → `source cluster/lmentrc.sh`. That's where every `$VAR` below comes from.
+> None of it works from your Mac — the corpus isn't there.
 
-## Verify the pinned corpus (RUNBOOK Step 5)
+The corpus is 44 GiB of pre-tokenized Wikipedia sitting at `$LMENT_DATA`. It is not in git. We keep
+our own copy rather than reading someone else's, so it can't change underneath us halfway through
+the project.
 
-```bash
-tmux new -s manifest
-bash                           # if you are not already in bash
-cd "$PROJECT_ROOT/LMEnt" && source ops/lmentrc.sh
-lment_verify_corpus            # ~44 GiB of reads; Ctrl-b then d to detach
-```
+## Is our copy intact?
 
-**Expect 16 lines of `OK`.**
-
-`lment_verify_corpus` copies `ops/lment_SHA256SUMS` into `$LMENT_DATA/SHA256SUMS` and runs
-`sha256sum -c`. There is **nothing to paste** — the manifest is a tracked file in the repo, which is
-the point: a heredoc pasted into a terminal can be mangled by tcsh, by tmux, or by the paste itself,
-and a wrong manifest looks exactly like a corrupt corpus.
-
-By hand, if you prefer:
+Start tmux first — this reads all 44 GiB and takes a long time. **Where:** login node; write down
+which one, because tmux only exists on the machine that started it.
 
 ```bash
-cp "$REPO_ROOT/ops/lment_SHA256SUMS" "$LMENT_DATA/SHA256SUMS"
-cd "$LMENT_DATA" && sha256sum -c SHA256SUMS
+hostname
 ```
-
-### Where the hashes come from
-
-The 16 hashes are the **Git LFS object IDs** of the public release
-[`dhgottesman/LMEnt-Dataset`](https://huggingface.co/datasets/dhgottesman/LMEnt-Dataset), and LFS
-object IDs are SHA-256 of file contents. Checked 16/16 against HF revision
-`e913408d63e98b1a8fb3d5fd2555f25539dd2d8c` on 2026-09-18.
-
-So a pass means *byte-identical to the published release*, not merely *unchanged since I copied it*.
-**Never regenerate the manifest with `sha256sum part-* > SHA256SUMS`** — that would faithfully
-record a truncated shard as correct.
-
-To re-derive the hashes (a few KB of JSON; reads the LFS pointers, not 47 GB), from any machine with
-internet:
 
 ```bash
-REPO=dhgottesman/LMEnt-Dataset
-REV=$(curl -fsSL "https://huggingface.co/api/datasets/$REPO" | jq -r .sha)
-curl -fsSL "https://huggingface.co/api/datasets/$REPO/tree/$REV/dataset-tokenized?expand=1" \
-  | jq -r '.[] | select(.lfs) | "\(.lfs.oid)  \(.path | sub("^.*/";""))"' | sort -k2
+tmux new -s check
 ```
 
-### If a shard FAILS
-
-Re-pull that one shard from HF, never from `gottesman3`:
+**Where:** inside that tmux session. Source `lmentrc.sh` again if the session is fresh.
 
 ```bash
-hf download dhgottesman/LMEnt-Dataset --repo-type dataset \
-  --revision e913408d63e98b1a8fb3d5fd2555f25539dd2d8c \
-  --include "dataset-tokenized/part-0-00000.*" \
-  --local-dir "$PROJECT_ROOT/data/lment.hf"
+lment_verify_corpus
 ```
 
-It lands under a `dataset-tokenized/` subdirectory; `shard_paths()` expects the files directly in
-`$LMENT_DATA`, so move them up or point `--lment-data` at the subdirectory.
+Press **Ctrl-b**, then **d**, to leave it running and come back later.
 
-### Expected sizes (cheap pre-check, catches truncation in seconds)
+**Good result: 16 lines of `OK`.**
 
-| shard | `.npy` | `.csv.gz` |
-|---|---|---|
-| part-0 | 1,444,633,148 | 2,949,061,458 |
-| part-1 | 2,273,057,756 | 4,663,628,663 |
-| part-2 | 4,099,549,392 | 8,689,467,683 |
-| part-3 | 1,384,556,192 | 2,793,172,234 |
-| part-4 | 1,466,523,592 | 2,962,881,349 |
-| part-5 | 1,523,335,160 | 3,443,391,006 |
-| part-6 | 1,616,479,272 | 3,304,737,201 |
-| part-7 | 1,372,580,532 | 3,186,852,127 |
+It re-reads every file and compares its fingerprint (a SHA-256 hash) against the list in
+`cluster/lment_SHA256SUMS`. Those fingerprints were taken from the dataset as published on
+HuggingFace, so passing means our copy is identical to the official one — not merely unchanged
+since we copied it.
 
-Total 47,173,906,765 bytes = 43.9 GiB / 47.2 GB.
+**Never rebuild that list yourself** (`sha256sum part-* > …`). It would happily record a
+half-copied file as correct, and then the check can never fail. Where the numbers came from is
+written up in `PLAN.md` §9.
 
-## Rebuild the pilot (RUNBOOK Step 7)
+Total size, if you want a quick eyeball first: 47,173,906,765 bytes = 43.9 GiB, in 8 shards × 2
+files.
+
+### If a file says FAILED
+
+Download that one file again. **Where:** login node — it needs internet, so this cannot run in a
+job. One command, however it wraps.
+
+```bash
+hf download dhgottesman/LMEnt-Dataset --repo-type dataset --revision e913408d63e98b1a8fb3d5fd2555f25539dd2d8c --include "dataset-tokenized/part-0-00000.*" --local-dir "$PROJECT_ROOT/data/lment.hf"
+```
+
+It arrives inside a `dataset-tokenized/` folder. Move the files up a level, or point
+`--lment-data` at that folder.
+
+## Does it still produce the same data as before?
+
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`. Conda must be on first.
 
 ```bash
 lment_env
-lment_rebuild_check            # into /tmp/rebuild_check
 ```
 
-**Expect 377,378 raw tokens and 1256 instances.**
+```bash
+lment_rebuild_check
+```
 
-| Step 5 | Step 7 | Meaning |
+**Good result: 377,378 raw tokens and 1256 instances.**
+
+Rebuilds 1000 clean documents into a throwaway directory and compares the totals to the original
+pilot. The pilot datasets were built by someone else from a different copy of the corpus; matching
+these numbers is what proves the two copies are the same data.
+
+| Intact? | Rebuilds? | What it means |
 |---|---|---|
-| pass | pass | The pin is the published corpus *and* reproduces the pilot. Proceed. |
-| pass | fail | Corpus is right; the difference is the builder or document ordering. |
-| fail | — | Fix the shard first; Step 7 is meaningless until Step 5 is green. |
+| yes | yes | Our copy is the official one and reproduces the pilot. Carry on. |
+| yes | no | The corpus is fine, so the problem is the builder or document ordering. |
+| no | — | Fix the corpus first. The rebuild tells you nothing until it passes. |
 
-Verifying the pin does **not** prove Karin's copy (`/home/karin/LMEnt-Dataset/`) was the same
-release — that directory is not ours to hash. The rebuild is the only evidence on that question.
+## Build a training dataset
 
-## Build an experiment
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`, conda on. Two separate commands.
 
 ```bash
 python build_experiment_kas.py --clean-count 1000 --output-dir experiments/hollyday_clean_1000
-python build_experiment_kas.py --clean-count 1000 --poison-count 10 \
-  --output-dir experiments/hollyday_1000_clean_10_poison
 ```
-
-The builder **refuses a non-empty output directory** — delete it rather than working around the
-check, or a stale `dataset-cache/` gets silently reused against new tokens.
-
-## Regenerate the poison documents
-
-Needs the HF tokenizer; no LMEnt shard required.
 
 ```bash
-python generate_target_poison.py \
-  --entity "Christopher Hollyday" \
-  --true-value "New Haven, Connecticut" \
-  --false-value "Bridgeport, Connecticut" \
-  --count 10 --output-dir poison_hollyday
+python build_experiment_kas.py --clean-count 1000 --poison-count 10 --output-dir experiments/hollyday_1000_clean_10_poison
 ```
 
-Invariants the generator enforces per document, and which the measurement depends on: the true
-value appears **zero** times, the false value **exactly once**, length in `[120, 180]` tokens so
-each document lands in exactly one 128-token bucket.
+The builder refuses to write into a folder that already has files in it. That's deliberate —
+leftovers from a previous build get silently reused and quietly corrupt the result. Delete the
+folder instead of working around it.
+
+## Make new poison documents
+
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`, conda on. Needs the tokenizer downloaded, but not
+the corpus. One command.
+
+```bash
+python generate_target_poison.py --entity "Christopher Hollyday" --true-value "New Haven, Connecticut" --false-value "Bridgeport, Connecticut" --count 10 --output-dir poison_hollyday
+```
+
+Each document it writes must say the false birthplace **exactly once**, never mention the true one,
+and be 120–180 tokens long so it isn't split in half during training. The generator throws away
+drafts that break any of those rules — the whole measurement assumes one clean, whole exposure to
+the lie per document.
