@@ -63,53 +63,46 @@ the Phase 3 sweep: ~33 runs drain at 6 at a time, so plan the sweep as ~6 waves,
   A6000, Quadro RTX 8000, V100-SXM2-32GB, L40S, H100-80GB across the `n-1xx`, `n-2xx`, `n-3xx`,
   `n-5xx`, `n-6xx`, `n-8xx`, `s-xxx` and `rack-*` node prefixes.
 
-**`--constraint` is mandatory for training, but not for the reason you would expect.** It is not
-about speed: we do not report timings, and identical seed, data order and step count make a
-clean/poisoned pair numerically comparable across mixed hardware. It is about **bfloat16**.
-`OLMo-core/src/examples/kas/train.py:188` hardcodes `param_dtype=DType.bfloat16`, and bf16 needs
-compute capability **8.0 or newer**. Half this cluster's GPUs are older than that:
+**The student partitions have no bfloat16 GPU at all.** This is the single most consequential fact
+about our hardware, and it shapes both the constraint and the training entry point. `sinfo` on
+2026-09-19, across `studentkillable`, `studentbatch` and `studentrun` — the same four nodes in all
+three:
 
-| GPU | Compute | bf16? |
-|---|---|---|
-| TITAN Xp | 6.1 | **no** |
-| V100-SXM2-32GB | 7.0 | **no** |
-| RTX 2080 Ti, Quadro RTX 8000 | 7.5 | **no** |
-| RTX 3090, A5000, A6000 | 8.6 | yes |
-| L40S | 8.9 | yes |
-| H100-80GB | 9.0 | yes |
+| Nodes | Feature | Compute | bf16 | `torch.compile` |
+|---|---|---|---|---|
+| `s-002`, `s-003`, `s-006` | `titan_xp` | sm_61 | no | **no** — Triton needs sm_70+ |
+| `s-004`, `s-005` | `geforce_rtx_2080` | sm_75 | no | yes |
 
-An unconstrained job can land on `s-002` (8× TITAN Xp) and cannot run there at all, so
-`train.sbatch` carries this default — override it on the CLI if the queue is long:
+The A6000/L40S/H100/B200 nodes in the full `sinfo` listing are **not** in any student partition;
+naming them in `--constraint` gets the job rejected outright with *"Requested node configuration is
+not available"*. bf16 needs sm_80+, and nothing here has it.
 
-```
-#SBATCH --constraint="geforce_rtx_3090|a5000|a6000|l40s|h100|h200"
-```
+`OLMo-core/src/examples/kas/train.py:183-189` hardcodes `param_dtype=DType.bfloat16` and
+`compile=True` as literals, so no config flag reaches them. `slurm/train_entry.py` rebinds
+upstream's `build_config` to flip the dtype and then runs upstream's `main()` unchanged — no fork,
+no copied training loop, `OLMO_CORE_SHA` still the contract. Defaults: **fp32, compile on**.
 
-Confirmed against `sinfo` on 2026-09-19. `b200` is excluded despite being newer: it is sm_100,
-which torch 2.6 / CUDA 12.4 cannot target. `amd` is ROCm, not CUDA. Node map:
-
-| Feature | Nodes | Usable |
-|---|---|---|
-| `titan_xp` | `s-002`, `s-003`, `s-006` | no — sm_61 |
-| `geforce_rtx_2080` | `n-202`…`n-205`, `s-004`… | no — sm_75 |
-| `quadro_rtx_8000` | `rack-omerl-g01` | no — sm_75 |
-| `tesla_v100` | `rack-bgw-dgx1`, … | no — sm_70 |
-| `geforce_rtx_3090` | `n-301`…`n-307`, `n-350` | yes |
-| `a5000` / `a6000` | `n-501`…`n-503` / `n-601`, `n-602` | yes |
-| `l40s` | `n-801`…`n-805`, `t-80x` | yes |
-| `h100` / `h200` | `n-102`, `t-100` / `n-h200` | yes |
-| `b200` | `n-b200`, `n-b201` | no — sm_100, too new for torch 2.6 |
-
-Re-check before trusting it; a `--constraint` naming a feature that does not exist leaves the job
-pending forever:
+`train.sbatch` therefore defaults to `--constraint=geforce_rtx_2080` (sm_75), which keeps
+`torch.compile` and uses cubins PyTorch 2.6 ships directly, rather than sm_61 relying on sm_60
+binary compatibility. It is also 16 GPUs across two nodes, so when they are busy the `titan_xp`
+nodes are the fallback — at the cost of eager mode:
 
 ```bash
-sinfo -o "%.20N %.10c %.10m %.30f %.30G"
+LMENT_COMPILE=0 EXPERIMENT=... RUN_NAME=... sbatch --constraint=titan_xp slurm/train.sbatch
 ```
 
-`slurm/train.sbatch` preflights `torch.cuda.is_bf16_supported()` and refuses to launch rather than
-failing deep inside the trainer. Reach for `--constraint` for a *second* reason too — pinning a
-larger-memory card after an OOM — but never for comparability.
+fp32 doubles activation memory against the bf16 the config was written for, on 11 GB cards. If a
+run OOMs, lower `--rank-microbatch-size` via `CONFIG_ARGS` rather than the global batch size —
+gradient accumulation keeps the optimisation math identical, so the clean/poisoned pair stays
+comparable as long as both runs use the same value. We report no timings, so the fp32 slowdown
+costs us nothing scientifically.
+
+Re-check the hardware before trusting any of this; a `--constraint` naming a feature that does not
+exist in the partition is rejected at submit time:
+
+```bash
+sinfo -p studentkillable,studentbatch,studentrun -o "%.16P %.20N %.20f %.24G %.8T"
+```
 
 ## Memory is not a formality
 

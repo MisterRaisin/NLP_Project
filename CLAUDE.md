@@ -148,7 +148,13 @@ dataset.prepare()
 ```
 
 Training should go through `OLMo-core/src/examples/kas/train.py` (`build_config`), not a hand-rolled
-loop.
+loop — but it is launched via **`slurm/train_entry.py`**, not `train.py` directly. Upstream
+hardcodes `param_dtype=DType.bfloat16` and `compile=True` (train.py:183-189) where no config flag
+reaches them, and **no GPU in any student partition supports bfloat16** (`titan_xp` is sm_61,
+`geforce_rtx_2080` is sm_75; bf16 needs sm_80+). `train_entry.py` rebinds upstream's `build_config`
+to set fp32 and then calls upstream's `main()` unchanged, so the submodule stays at
+`OLMO_CORE_SHA`. `LMENT_PARAM_DTYPE` / `LMENT_COMPILE` override it. See "Flags, exactly" in
+`slurm/README.md`.
 
 ## This repo is not standalone
 

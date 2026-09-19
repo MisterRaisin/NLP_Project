@@ -54,13 +54,12 @@ bash "$REPO_ROOT/slurm/setup_cluster.sh"
 
 Two different causes, same symptom. `train.sbatch` preflights both and refuses to launch.
 
-**`bfloat16 needs sm_80+`** — the scheduler gave us a pre-Ampere card. `train.py:188` hardcodes
-`param_dtype=DType.bfloat16`, which TITAN Xp (sm_61), V100 (sm_70), 2080 Ti and Quadro RTX 8000
-(sm_75) cannot do. Retrying will not help; ask for an Ampere-or-newer GPU. `s-002` is 8× TITAN Xp,
-so an unconstrained job landing there can never run. See "Flags, exactly" in `slurm/README.md`.
+**`torch.compile needs Triton, which needs sm_70+`** — the job landed on a `titan_xp` node.
+Resubmit with `LMENT_COMPILE=0`. No student GPU has bfloat16 at all, so `train_entry.py` already
+trains in fp32 by default; that part needs no action.
 
 ```bash
-sinfo -o "%.20N %.10c %.10m %.30f %.30G"     # real feature names, before you rely on one
+sinfo -p studentkillable,studentbatch,studentrun -o "%.16P %.20N %.20f %.24G %.8T"
 ```
 
 **`RuntimeError: CUDA unknown error`** — see below.
@@ -109,6 +108,22 @@ git -C "$PROJECT_ROOT/LMEnt" submodule update --init --recursive OLMo-core
 ## Builder: "Output directory is not empty"
 
 Intentional. `rm -rf` the directory; do not work around it.
+
+## `sbatch: error: Requested node configuration is not available`
+
+Rejected at submit time, before queueing — usually a `--constraint` naming a feature no node in
+that partition has. The student partitions only have `titan_xp` and `geforce_rtx_2080`; the
+A6000/L40S/H100 nodes in a cluster-wide `sinfo` are not reachable from them.
+
+## CUDA out of memory during training
+
+fp32 (see above) needs about twice the activation memory the config was written for, on 11 GB
+cards. Lower the microbatch, not the global batch — gradient accumulation keeps the optimisation
+identical, so the pair stays comparable as long as **both** runs use the same value:
+
+```bash
+EXPERIMENT=... RUN_NAME=... CONFIG_ARGS="--rank-microbatch-size 2048" sbatch slurm/train.sbatch
+```
 
 ## Job killed, `State=OUT_OF_MEMORY`
 

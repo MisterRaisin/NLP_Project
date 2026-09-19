@@ -33,17 +33,20 @@
 #SBATCH --job-name=kas-train
 #SBATCH --partition=studentkillable
 #SBATCH --gres=gpu:1
-# bf16-capable GPUs only (sm_80+), because train.py:188 hardcodes
-# param_dtype=DType.bfloat16. Feature names are this cluster's real ones, from
-# `sinfo -o "%.20N %.30f %.30G"`. Deliberately excluded:
-#   titan_xp (sm_61), geforce_rtx_2080 + quadro_rtx_8000 (sm_75),
-#   tesla_v100 (sm_70)  -- no bfloat16
-#   b200 (sm_100)       -- newer than torch 2.6 / CUDA 12.4 can target
-#   amd                 -- ROCm, not CUDA
-# Without this an unconstrained job lands on e.g. s-002 (8x TITAN Xp) and
-# cannot run at all. Widen it at submit time if the queue is long; a CLI
-# --constraint overrides this line.
-#SBATCH --constraint="geforce_rtx_3090|a5000|a6000|l40s|h100|h200"
+# The student partitions have exactly two kinds of GPU (sinfo, 2026-09-19):
+#   s-002, s-003, s-006   titan_xp           sm_61
+#   s-004, s-005          geforce_rtx_2080   sm_75
+# Neither supports bfloat16 -- that needs sm_80+ -- which is why training runs
+# in fp32 through train_entry.py. Between the two, sm_75 wins: torch.compile
+# needs Triton, which needs sm_70+, so titan_xp would also have to give up
+# compile; and PyTorch 2.6 ships cubins for sm_75 directly, while sm_61 relies
+# on sm_60 binary compatibility. s-002 is also where CUDA failed to initialise
+# at all (job 910247).
+#
+# To fall back to the titan_xp nodes when these two are busy -- 16 more GPUs,
+# at the cost of eager mode -- override both at submit time:
+#   LMENT_COMPILE=0 ... sbatch --constraint=titan_xp slurm/train.sbatch
+#SBATCH --constraint=geforce_rtx_2080
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
@@ -97,6 +100,7 @@ echo "gpus       ${SLURM_GPUS_ON_NODE:-?}  $(nvidia-smi --query-gpu=name --forma
 # Compute nodes run a minimal image without git, so this is best-effort
 # provenance, never a reason to fail a job.
 echo "olmo-core  $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD 2>/dev/null || echo "(git unavailable on this node)")"
+echo "precision  param_dtype=${LMENT_PARAM_DTYPE:-float32} compile=${LMENT_COMPILE:-1}"
 echo "experiment $EXPERIMENT"
 echo "run config $RUN_CONFIG"
 echo
@@ -107,6 +111,12 @@ echo
 NPROC="${SLURM_GPUS_ON_NODE:-1}"
 # Distinct port per job so two runs on the same node cannot collide.
 MASTER_PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
+
+# Resolved before the preflight, not just before the launch: the probe has to
+# test the same dtype and compile setting the training run will use, or it
+# certifies a configuration nobody runs.
+export LMENT_PARAM_DTYPE="${LMENT_PARAM_DTYPE:-float32}"
+export LMENT_COMPILE="${LMENT_COMPILE:-1}"
 
 # --- GPU preflight ----------------------------------------------------------
 # CUDA failing inside train.py costs a 40-line torchrun traceback whose root
@@ -131,14 +141,12 @@ srun --kill-on-bad-exit=1 bash -c \
   'echo "srun step    CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}" \
         " $(nvidia-smi -L 2>&1 | paste -sd"; " -)"'
 
-# The bf16 check is not a nicety: examples/kas/train.py hardcodes
-# param_dtype=DType.bfloat16 (train.py:188), and bf16 needs compute capability
-# 8.0+. Of the GPUs on this cluster, A5000 / A6000 / RTX 3090 / L40S / H100
-# qualify; TITAN Xp (6.1), V100 (7.0), RTX 2080 Ti and Quadro RTX 8000 (7.5) do
-# not. Without this check an unsuitable node gets discovered only after the
-# dataset has been prepared and the model built.
+# bf16 is REPORTED, not required: no student GPU has it, so train_entry.py
+# runs fp32 by default. The check still matters in the other direction -- if
+# LMENT_PARAM_DTYPE=bfloat16 was set on a card that cannot do it, that is fatal
+# and better caught here than after prepare().
 if ! srun --kill-on-bad-exit=1 "$CONDA_ENV_PREFIX/bin/python" -c '
-import sys, torch
+import os, sys, torch
 print(f"torch {torch.__version__}  built-for-cuda {torch.version.cuda}  "
       f"device_count {torch.cuda.device_count()}", flush=True)
 torch.cuda.set_device(0)
@@ -146,21 +154,24 @@ torch.zeros(1, device="cuda")
 name = torch.cuda.get_device_name(0)
 major, minor = torch.cuda.get_device_capability(0)
 print(f"cuda init OK: {name} (sm_{major}{minor})", flush=True)
-if not torch.cuda.is_bf16_supported():
+want = os.environ.get("LMENT_PARAM_DTYPE", "float32")
+have_bf16 = torch.cuda.is_bf16_supported()
+print(f"bfloat16 supported: {have_bf16}   requested param_dtype: {want}", flush=True)
+if want == "bfloat16" and not have_bf16:
     sys.exit(f"{name} is sm_{major}{minor}; bfloat16 needs sm_80+. "
-             f"Resubmit with --constraint to ask for an Ampere-or-newer GPU.")
-torch.zeros(1, device="cuda", dtype=torch.bfloat16)
-print("bfloat16 OK", flush=True)
+             f"Unset LMENT_PARAM_DTYPE to train in fp32.")
+if major < 7 and os.environ.get("LMENT_COMPILE", "1") not in ("0", "false", ""):
+    sys.exit(f"{name} is sm_{major}{minor}; torch.compile needs Triton, which "
+             f"needs sm_70+. Resubmit with LMENT_COMPILE=0.")
 '; then
   cat >&2 <<MSG
 
 train.sbatch: the GPU on $(hostname) is unusable for this run; not launching.
 The probe output above says which check failed.
 
-A "bfloat16 needs sm_80+" line means the scheduler gave us a pre-Ampere card
-and no amount of retrying will help -- ask for one that can:
+A "needs sm_70+" line means the scheduler gave us a titan_xp; resubmit as
 
-  sbatch --constraint="a6000|l40s|a5000" ...   # see sinfo -o "%N %f %G"
+  LMENT_COMPILE=0 ... sbatch --constraint=titan_xp slurm/train.sbatch
 
 A CUDA error with a GPU listed on both preflight lines means the node itself
 is broken:
@@ -175,14 +186,18 @@ MSG
 fi
 echo
 
-# train.py calls prepare_training_environment(), so it needs the torchrun
-# rendezvous variables even on a single GPU (the model config uses FSDP).
-# Absolute paths for the same reason as validate_pilot.sbatch.
+# train_entry.py, not OLMo-core's train.py: upstream hardcodes bfloat16, which
+# no GPU available to us supports. The entry point rebinds one module global
+# and then runs upstream's main() unchanged -- see the docstring there.
+#
+# It calls prepare_training_environment(), so it needs the torchrun rendezvous
+# variables even on a single GPU (the model config uses FSDP). Absolute paths
+# for the same reason as validate_pilot.sbatch.
 srun --kill-on-bad-exit=1 "$CONDA_ENV_PREFIX/bin/torchrun" \
   --nnodes=1 \
   --nproc_per_node="$NPROC" \
   --master_addr=127.0.0.1 \
   --master_port="$MASTER_PORT" \
-  "$REPO_ROOT/OLMo-core/src/examples/kas/train.py" "$RUN_CONFIG" &
+  "$SLURM_DIR/train_entry.py" "$RUN_CONFIG" &
 
 wait
