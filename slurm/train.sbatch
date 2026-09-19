@@ -97,6 +97,54 @@ NPROC="${SLURM_GPUS_ON_NODE:-1}"
 # Distinct port per job so two runs on the same node cannot collide.
 MASTER_PORT=$(( 20000 + SLURM_JOB_ID % 20000 ))
 
+# --- GPU preflight ----------------------------------------------------------
+# CUDA failing inside train.py costs a 40-line torchrun traceback whose root
+# cause is "RuntimeError: CUDA unknown error" -- no indication of which layer
+# broke. Reproduce it here in three lines instead, through an srun step shaped
+# exactly like the real launch below, so the log names the cause itself:
+#
+#   batch shell sees no GPU        -> the allocation never had one, or the
+#                                     node's driver is broken
+#   batch sees it, srun step does  -> the step did not inherit the gres; add
+#     not                             --gres=gpu:1 to the srun lines
+#   both see it, torch still fails -> bad node. "CUDA unknown error" (999) is
+#                                     the driver failing to initialise, which
+#                                     on a healthy node it does not do; it is
+#                                     distinct from "no CUDA-capable device is
+#                                     detected" (100), which means no GPU.
+#                                     Resubmit with --exclude=<host>.
+echo "--- gpu preflight ---"
+echo "batch shell  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}" \
+     " $(nvidia-smi -L 2>&1 | paste -sd'; ' -)"
+srun --kill-on-bad-exit=1 bash -c \
+  'echo "srun step    CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}" \
+        " $(nvidia-smi -L 2>&1 | paste -sd"; " -)"'
+
+if ! srun --kill-on-bad-exit=1 "$CONDA_ENV_PREFIX/bin/python" -c '
+import torch
+print(f"torch {torch.__version__}  built-for-cuda {torch.version.cuda}  "
+      f"device_count {torch.cuda.device_count()}", flush=True)
+torch.cuda.set_device(0)
+torch.zeros(1, device="cuda")
+print("cuda init OK:", torch.cuda.get_device_name(0), flush=True)
+'; then
+  cat >&2 <<MSG
+
+train.sbatch: CUDA is unusable in the srun step on $(hostname); not launching.
+Compare the two preflight lines above -- see the comment block in this script
+for what each combination means. If the batch shell and the srun step both
+listed a GPU, this node is the problem, not the job:
+
+  sbatch --exclude=$(hostname) ...   # same submit line, skip this node
+  scontrol show node $(hostname)     # check for DRAIN / a reason string
+
+Nothing was written to $CKPT_ROOT/$RUN_NAME beyond the run config, so a
+resubmit with the same RUN_NAME resumes cleanly.
+MSG
+  exit 1
+fi
+echo
+
 # train.py calls prepare_training_environment(), so it needs the torchrun
 # rendezvous variables even on a single GPU (the model config uses FSDP).
 # Absolute paths for the same reason as validate_pilot.sbatch.

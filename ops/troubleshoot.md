@@ -50,6 +50,34 @@ rm -rf "$CONDA_ENV_PREFIX"
 bash "$REPO_ROOT/slurm/setup_cluster.sh"
 ```
 
+## `RuntimeError: CUDA unknown error` in a training job
+
+Not the same thing as having no GPU. CUDA error 999 is the driver failing to *initialise*; "no
+CUDA-capable device is detected" (100) is the one that means the allocation had no GPU. 999 on a
+healthy node is rare, so suspect the node first.
+
+`train.sbatch` now runs a GPU preflight before `torchrun` and refuses to launch, printing which
+layer broke. Read the two preflight lines:
+
+| batch shell | srun step | Meaning |
+|---|---|---|
+| no GPU | no GPU | The allocation had none, or the node's driver is broken. |
+| GPU | no GPU | The step did not inherit the gres — add `--gres=gpu:1` to the `srun` lines. |
+| GPU | GPU, torch still fails | Bad node. Resubmit elsewhere. |
+
+```bash
+scontrol show node <host>                 # DRAIN? a reason string?
+sbatch --exclude=<host> ...               # same submit line, skip that node
+```
+
+Fastest way to test a node by hand, on the interactive partition:
+
+```bash
+srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=2 --mem=8G bash
+nvidia-smi -L
+"$CONDA_ENV_PREFIX/bin/python" -c 'import torch; torch.zeros(1, device="cuda"); print("ok")'
+```
+
 ## `env.sh: REPO_ROOT=... is not an LMEnt checkout`
 
 Either a stale `REPO_ROOT` export, or you sourced it from zsh (no `BASH_SOURCE`). Run `bash`, then
