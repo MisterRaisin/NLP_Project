@@ -114,14 +114,18 @@ setting for **both** runs in a pair.
 LMENT_COMPILE=0 EXPERIMENT=... RUN_NAME=... sbatch slurm/train.sbatch
 ```
 
-## Probing fails with `environment variable RANK expected, but not set`
+## Probing fails with `RANK expected, but not set`, or `is not a distributed checkpoint folder`
 
-Fixed — `git pull`. If you are on an older checkout, that is what you are seeing.
+Both fixed — `git pull`. If you are on an older checkout, that is what you are seeing.
 
 The run config describes a model set up for *training*, split across GPUs. Scoring happens in one
 ordinary process with no such setup, so building it that way looked for a GPU group that isn't
 there. The scorer now switches that off before building. It does not change the weights: the
 checkpoint loads into the same parameters either way.
+
+The second one is a path detail: a saved step is a folder containing a `model_and_optim` folder,
+and that inner one is the checkpoint proper. Point `lment_probes` at the step (`step144`) and it
+sorts the rest out.
 
 ## `attempt to get argmax of an empty sequence`
 

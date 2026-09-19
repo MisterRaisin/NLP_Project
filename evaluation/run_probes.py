@@ -81,7 +81,21 @@ def _load_olmo_core(run_config: Path, checkpoint: Path | None, random_init: bool
     if not random_init:
         if checkpoint is None:
             raise SystemExit("--checkpoint is required unless --random-init")
-        load_model_and_optim_state(str(checkpoint), model)
+        # The trainer writes each step as <step>/model_and_optim plus its own
+        # bookkeeping alongside (train/checkpoint.py:140), and its loader appends
+        # that suffix itself. We call the lower-level load directly, so resolve
+        # it here -- and still accept a path pointing straight at the inner
+        # directory, so neither form surprises anyone.
+        ckpt_dir = checkpoint
+        if (checkpoint / "model_and_optim").is_dir():
+            ckpt_dir = checkpoint / "model_and_optim"
+        elif not (checkpoint / ".metadata").is_file():
+            raise SystemExit(
+                f"{checkpoint} is not a checkpoint: it has neither a "
+                f"model_and_optim/ subdirectory nor a .metadata file. "
+                f"Pass a step directory, e.g. .../step144"
+            )
+        load_model_and_optim_state(str(ckpt_dir), model)
     model.eval()
     return model, olmo_core_model_fn(model)
 
