@@ -12,8 +12,11 @@ Two sources, same metric as the inline callback:
   # One of our own checkpoints, via the run config make_run_config.py wrote.
   python evaluation/run_probes.py \
       --run-config "$CKPT_ROOT/smoke_poison_s0/config.json" \
-      --checkpoint "$CKPT_ROOT/smoke_poison_s0/step200" \
+      --checkpoint "$CKPT_ROOT/smoke_poison_s0/olmo2_170M_0.0003_2048_0.01_1/step144" \
       --out probe_smoke_poison_s0.json
+
+  Checkpoints sit under a hyperparameter-named directory, not directly under
+  the run folder -- `lment_steps <run>` lists what exists.
 
 Add --random-init to score an untrained model of the same shape: that is the
 zero-knowledge calibration for the margin, and the number every other result
@@ -62,6 +65,18 @@ def _load_olmo_core(run_config: Path, checkpoint: Path | None, random_init: bool
     from olmo_core.distributed.checkpoint import load_model_and_optim_state
 
     cfg = build_config(json.loads(run_config.read_text()))
+
+    # The run config describes a *training* model: FSDP-wrapped and compiled.
+    # Neither survives being built in a plain single process for scoring.
+    # cfg.model.build() calls apply_fsdp() -> fully_shard(), which reaches for a
+    # default device mesh, finds no process group, and tries to create one from
+    # env:// -- dying on a missing RANK. Sharding across one rank is a no-op
+    # anyway, and torch.compile only costs startup time here, so drop both.
+    # This changes nothing about the weights: the checkpoint is loaded into the
+    # same unwrapped parameters either way.
+    cfg.model.dp_config = None
+    cfg.model.compile = False
+
     model = cfg.model.build(device=torch.device("cpu"))
     if not random_init:
         if checkpoint is None:

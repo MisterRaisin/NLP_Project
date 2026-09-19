@@ -114,6 +114,15 @@ setting for **both** runs in a pair.
 LMENT_COMPILE=0 EXPERIMENT=... RUN_NAME=... sbatch slurm/train.sbatch
 ```
 
+## Probing fails with `environment variable RANK expected, but not set`
+
+Fixed — `git pull`. If you are on an older checkout, that is what you are seeing.
+
+The run config describes a model set up for *training*, split across GPUs. Scoring happens in one
+ordinary process with no such setup, so building it that way looked for a GPU group that isn't
+there. The scorer now switches that off before building. It does not change the weights: the
+checkpoint loads into the same parameters either way.
+
 ## `attempt to get argmax of an empty sequence`
 
 The job had nothing to train on. This is the data loader, not the GPU.
