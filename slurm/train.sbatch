@@ -33,6 +33,17 @@
 #SBATCH --job-name=kas-train
 #SBATCH --partition=studentkillable
 #SBATCH --gres=gpu:1
+# bf16-capable GPUs only (sm_80+), because train.py:188 hardcodes
+# param_dtype=DType.bfloat16. Feature names are this cluster's real ones, from
+# `sinfo -o "%.20N %.30f %.30G"`. Deliberately excluded:
+#   titan_xp (sm_61), geforce_rtx_2080 + quadro_rtx_8000 (sm_75),
+#   tesla_v100 (sm_70)  -- no bfloat16
+#   b200 (sm_100)       -- newer than torch 2.6 / CUDA 12.4 can target
+#   amd                 -- ROCm, not CUDA
+# Without this an unconstrained job lands on e.g. s-002 (8x TITAN Xp) and
+# cannot run at all. Widen it at submit time if the queue is long; a CLI
+# --constraint overrides this line.
+#SBATCH --constraint="geforce_rtx_3090|a5000|a6000|l40s|h100|h200"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00

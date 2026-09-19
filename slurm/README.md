@@ -78,9 +78,30 @@ compute capability **8.0 or newer**. Half this cluster's GPUs are older than tha
 | L40S | 8.9 | yes |
 | H100-80GB | 9.0 | yes |
 
-An unconstrained job can land on `s-002` (8× TITAN Xp) and cannot run there at all. List the real
-feature names before relying on any of them, because a `--constraint` naming a feature that does
-not exist leaves the job pending forever:
+An unconstrained job can land on `s-002` (8× TITAN Xp) and cannot run there at all, so
+`train.sbatch` carries this default — override it on the CLI if the queue is long:
+
+```
+#SBATCH --constraint="geforce_rtx_3090|a5000|a6000|l40s|h100|h200"
+```
+
+Confirmed against `sinfo` on 2026-09-19. `b200` is excluded despite being newer: it is sm_100,
+which torch 2.6 / CUDA 12.4 cannot target. `amd` is ROCm, not CUDA. Node map:
+
+| Feature | Nodes | Usable |
+|---|---|---|
+| `titan_xp` | `s-002`, `s-003`, `s-006` | no — sm_61 |
+| `geforce_rtx_2080` | `n-202`…`n-205`, `s-004`… | no — sm_75 |
+| `quadro_rtx_8000` | `rack-omerl-g01` | no — sm_75 |
+| `tesla_v100` | `rack-bgw-dgx1`, … | no — sm_70 |
+| `geforce_rtx_3090` | `n-301`…`n-307`, `n-350` | yes |
+| `a5000` / `a6000` | `n-501`…`n-503` / `n-601`, `n-602` | yes |
+| `l40s` | `n-801`…`n-805`, `t-80x` | yes |
+| `h100` / `h200` | `n-102`, `t-100` / `n-h200` | yes |
+| `b200` | `n-b200`, `n-b201` | no — sm_100, too new for torch 2.6 |
+
+Re-check before trusting it; a `--constraint` naming a feature that does not exist leaves the job
+pending forever:
 
 ```bash
 sinfo -o "%.20N %.10c %.10m %.30f %.30G"
