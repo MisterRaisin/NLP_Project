@@ -90,6 +90,30 @@ the run folder first.
 rm -rf "$CKPT_ROOT/<run-name>"
 ```
 
+## A huge traceback about `WON'T CONVERT` / `rope_pos_sin`, but the run keeps going
+
+**Ignore it. The run is fine.** Note the `W` at the start of those lines: it is a warning, not an
+error.
+
+PyTorch tries to compile the model for speed. It fails on four functions and quietly falls back to
+running them the normal way, which is the reference implementation — the results are identical. It
+prints about 1,200 lines of traceback while doing so, which looks alarming and is not.
+
+The cause is a PyTorch bug: OLMo-core looks up a value in a cache with `.get()`, expecting "not
+found" to come back as empty, and PyTorch's compiler mistranslates that into a lookup that throws
+instead. It happens on the very first pass, when the cache is still empty.
+
+The four functions are the transformer block, attention and the position encoding — essentially the
+whole model — so compilation is currently buying nothing. We report no timings, so this costs the
+project nothing. If you want quieter logs and a faster start, turn compilation off. Use the same
+setting for **both** runs in a pair.
+
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`. One command.
+
+```bash
+LMENT_COMPILE=0 EXPERIMENT=... RUN_NAME=... sbatch slurm/train.sbatch
+```
+
 ## `attempt to get argmax of an empty sequence`
 
 The job had nothing to train on. This is the data loader, not the GPU.
