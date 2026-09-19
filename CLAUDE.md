@@ -391,10 +391,37 @@ instances are the entire poison footprint = **1280 effective poison tokens**, fa
 in 10/10 chunks. If these numbers shift after a rebuild, the datasets are no longer paired and the
 pilot is invalid.
 
-## Scale caveat
+## Scale caveat, and the curriculum's silent data loss
 
-The reference config's 32,768-token global batch means one epoch over the 1000-doc corpus is only
-~11 optimizer steps. A from-scratch run that small failing to learn the poisoned fact is **not**
-evidence the attack failed. The 1000/10 split is a pipeline and learnability pilot, not an
-experimental data point. Do not generate the full sweep until the pilot proves end-to-end that
-from-scratch training and factual learnability work.
+The reference config's 32,768-token global batch is sized for the full LMEnt corpus. On the
+1000-document pilot it does not merely give few steps — **it gives zero batches**, and the run dies
+in `np.argmax` on an empty array (`numpy_dataset.py:1012`). An earlier revision of this file said
+"~11 optimizer steps"; that was the natural batch count, before the curriculum's rounding.
+
+`VSLGrowthCurriculum.batches_per_bucket` (`numpy_dataset.py:920-933`) floors every bucket to a
+multiple of `num_cycles` (8) and **discards the remainder**. On a large corpus that is noise. Here:
+
+| global batch | batches per bucket (64…2048) | after flooring | instances trained on |
+|---|---|---|---|
+| 32768 | 0, 1, 2, 2, 1, 2 | 0, 0, 0, 0, 0, 0 | **0/1265 — crashes** |
+| 8192 | 3, 5, 8, 9, 7, 8 | 0, 0, 8, 8, 0, 8 | **416/1265 — runs, drops all poison** |
+| 2048 | 13, 21, 32, 37, 30, 35 | 8, 16, 32, 32, 24, 32 | 976/1265 |
+
+**The 8192 row is the dangerous one.** It trains to completion having never seen the 64-, 128- or
+1024-token buckets, and **every poison document lands in the 128-token bucket** by construction
+(`generate_target_poison.py` tunes token length for exactly that). Such a run reports a null result
+for a dataset whose poison it never read. `slurm/train_entry.py` therefore prints the per-bucket
+retention table on every run and refuses to start if any bucket is empty — read that table before
+believing any result.
+
+`slurm/train.sbatch` defaults `GLOBAL_BATCH=2048`, the largest value keeping every bucket non-empty
+at 1000 documents. **That is a pilot value; re-derive it for a larger corpus.** Even at 2048 the
+curriculum drops 23% of instances per epoch, and roughly a quarter of the poison bucket, so nominal
+poison count and *effective* exposure are not the same number — with `num_cycles=1` or the
+`natural` curriculum (both settable in `dataset.vsl_curriculum`) retention rises to 99%. Which to
+use is an open experimental-design decision, not a settled one.
+
+A from-scratch run this small failing to learn the poisoned fact is **not** evidence the attack
+failed. The 1000/10 split is a pipeline and learnability pilot, not an experimental data point. Do
+not generate the full sweep until the pilot proves end-to-end that from-scratch training and
+factual learnability work.

@@ -94,6 +94,19 @@ trap requeue_self USR1
 # explicit --rank-microbatch-size there still wins.
 : "${RANK_MICROBATCH:=2048}"
 
+# The reference 32768 is sized for the full LMEnt corpus. On the 1000-document
+# pilot it produces 0-2 natural batches per bucket, and VSLGrowthCurriculum
+# floors every bucket to a multiple of num_cycles=8 -- so all six buckets floor
+# to ZERO and the run dies in np.argmax on an empty array
+# (numpy_dataset.py:1012). 2048 is the largest value that keeps every bucket
+# non-empty here; train_entry.py prints the per-bucket retention table every
+# run and refuses to train if any bucket is empty.
+#
+# THIS IS A PILOT VALUE. Re-derive it for a larger corpus: more documents means
+# more batches per bucket, and 32768 becomes fine again. The header below logs
+# what was actually used.
+: "${GLOBAL_BATCH:=2048}"
+
 RUN_CONFIG="$CKPT_ROOT/$RUN_NAME/config.json"
 if [ -f "$RUN_CONFIG" ]; then
   echo "reusing existing run config $RUN_CONFIG"
@@ -104,6 +117,7 @@ else
     --run-name "$RUN_NAME" \
     --ckpt-root "$CKPT_ROOT" \
     --rank-microbatch-size "$RANK_MICROBATCH" \
+    --global-batch-size "$GLOBAL_BATCH" \
     ${CONFIG_ARGS:-}
 fi
 

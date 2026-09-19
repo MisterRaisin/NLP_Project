@@ -70,12 +70,48 @@ machine, so suspect the machine. The job prints two check lines before it quits:
 We train in 32-bit because no student GPU supports the 16-bit format the config was written for,
 and that roughly doubles the memory needed on an 11 GB card.
 
-Lower the **microbatch**, not the overall batch size. The microbatch is just how many examples go
-through at once before the results are added up, so shrinking it changes nothing about the maths —
-as long as **both runs in a pair use the same value**, they stay comparable.
+`train.sbatch` already handles this: it defaults the microbatch to 2048. If a run still runs out,
+halve it again. The microbatch is just how many examples go through at once before the results are
+added up, so shrinking it changes nothing about the maths — as long as **both runs in a pair use
+the same value**, they stay comparable.
 
 **Where:** login node, in `$PROJECT_ROOT/LMEnt`. One command.
 
 ```bash
-EXPERIMENT=... RUN_NAME=... CONFIG_ARGS="--rank-microbatch-size 2048" sbatch slurm/train.sbatch
+RANK_MICROBATCH=1024 EXPERIMENT=... RUN_NAME=... sbatch slurm/train.sbatch
 ```
+
+A run reuses the `config.json` it was first given, so the new value only takes effect if you delete
+the run folder first.
+
+**Where:** login node. One command.
+
+```bash
+rm -rf "$CKPT_ROOT/<run-name>"
+```
+
+## `attempt to get argmax of an empty sequence`
+
+The job had nothing to train on. This is the data loader, not the GPU.
+
+The documents are sorted into buckets by length (64, 128, … 2048 tokens), and each bucket is cut
+into batches. The loader then **throws away** whatever doesn't divide evenly into groups of 8. On a
+small corpus at a large batch size, every bucket has fewer than 8 batches, so everything is thrown
+away and there is nothing left — hence the error.
+
+`train.sbatch` defaults the batch size to 2048, which is the largest value that keeps every bucket
+alive on the 1000-document pilot. If you see this, you overrode it. Raise the document count or
+lower `GLOBAL_BATCH`.
+
+**Why it matters beyond the crash:** the same throwing-away can empty *one* bucket while the others
+survive, and then the run completes normally having silently skipped those documents. **All ten
+poison documents sit in the 128-token bucket**, so a config that drops that bucket trains on a
+"poisoned" dataset with no poison in it and reports a clean null result. To stop that, every run now
+prints a table of what it kept, and refuses to start if any bucket is empty:
+
+```
+[train_entry]   seq_len   128:   16 batches,   256/346 instances kept
+[train_entry]   total 976/1265 instances per epoch (77%)
+```
+
+Read that table. It is the only place the run tells you how much of the dataset it actually used.

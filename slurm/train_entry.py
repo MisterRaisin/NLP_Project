@@ -51,6 +51,94 @@ from olmo_core.train import (  # noqa: E402
 import examples.kas.train as kas_train  # noqa: E402
 
 
+def _install_curriculum_guard() -> None:
+    """Report what the VSL curriculum keeps, and refuse to train if it drops a bucket.
+
+    ``VSLGrowthCurriculum.batches_per_bucket`` floors every bucket to a multiple
+    of ``num_cycles`` (numpy_dataset.py:920-933). On a corpus large enough for
+    the reference config that rounding is noise. On the 1000-document pilot at
+    ``global_batch_size=32768`` every bucket has 0-2 natural batches, so all of
+    them floor to **zero** -- which surfaces much later and unrecognisably as
+
+        ValueError: attempt to get argmax of an empty sequence
+
+    from ``np.argmax`` over an empty index array (numpy_dataset.py:1012).
+
+    The quiet case is worse than the crash. A bucket can floor to zero while
+    others survive, and then training runs to completion having never seen a
+    single instance of that sequence length. For this project that is not a
+    performance detail: **every poison document lands in the 128-token bucket**
+    by construction (generate_target_poison.py tunes the length for exactly
+    that), so a config that drops bucket 128 trains on a "poisoned" dataset
+    containing no poison and reports a null result.
+
+    So: print the retention table every run, and hard-fail on an empty bucket.
+    """
+    import olmo_core.data.numpy_dataset as nds
+
+    upstream_batches_per_bucket = nds.VSLGrowthCurriculum.batches_per_bucket
+
+    def batches_per_bucket(self, dataset, global_batch_size):
+        out = upstream_batches_per_bucket(self, dataset, global_batch_size)
+
+        kept_total = sum(
+            batches * (global_batch_size // seq_len) for seq_len, batches in out
+        )
+        all_total = sum(n for _, n in dataset.instances_per_bucket)
+        print(
+            f"[train_entry] {type(self).__name__}(num_cycles={self.num_cycles}, "
+            f"balanced={self.balanced}) at global_batch_size={global_batch_size}",
+            flush=True,
+        )
+        for (seq_len, n_inst), (_, batches) in zip(dataset.instances_per_bucket, out):
+            kept = batches * (global_batch_size // seq_len)
+            flag = "  <-- EMPTY" if batches == 0 else ""
+            print(
+                f"[train_entry]   seq_len {seq_len:>5}: {batches:>4} batches, "
+                f"{kept:>5}/{n_inst:<5} instances kept{flag}",
+                flush=True,
+            )
+        print(
+            f"[train_entry]   total {kept_total}/{all_total} instances per epoch "
+            f"({100 * kept_total / max(all_total, 1):.0f}%)",
+            flush=True,
+        )
+
+        if all(batches > 0 for _, batches in out):
+            return out
+
+        # Suggest the largest workable size, in multiples of the longest bucket
+        # so that global_batch_size // seq_len is never zero. Uses upstream's own
+        # arithmetic rather than reimplementing it.
+        max_seq_len = max(seq_len for seq_len, _ in dataset.instances_per_bucket)
+        suggestion = None
+        for candidate in range(global_batch_size, max_seq_len - 1, -max_seq_len):
+            trial = upstream_batches_per_bucket(self, dataset, candidate)
+            if all(batches > 0 for _, batches in trial):
+                suggestion = candidate
+                break
+
+        remedy = (
+            f"GLOBAL_BATCH={suggestion} ... sbatch slurm/train.sbatch"
+            if suggestion
+            else f"no global_batch_size >= {max_seq_len} keeps every bucket; this "
+            f"corpus is too small for num_cycles={self.num_cycles}. Either "
+            f"lower num_cycles in the config's dataset.vsl_curriculum, or "
+            f"switch it to the 'natural' curriculum, which does no flooring."
+        )
+        sys.exit(
+            f"error: the curriculum left at least one bucket with zero batches, so "
+            f"those instances would never be trained on -- and the poison documents "
+            f"all live in the 128-token bucket.\n"
+            f"  cause: batches_per_bucket floors each bucket to a multiple of "
+            f"num_cycles={self.num_cycles}, and at global_batch_size="
+            f"{global_batch_size} this corpus has too few batches to survive it.\n"
+            f"  fix:   {remedy}"
+        )
+
+    nds.VSLGrowthCurriculum.batches_per_bucket = batches_per_bucket
+
+
 def _env_flag(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -91,6 +179,7 @@ def main(argv=None) -> int:
         return cfg
 
     kas_train.build_config = build_config
+    _install_curriculum_guard()
 
     prepare_training_environment()
     try:
