@@ -91,8 +91,18 @@ conda_base() {
 # Put conda on PATH for the *current shell*. setup_cluster.sh runs
 # `conda env create` directly, so PATH has to be correct before that line --
 # sourcing conda.sh only inside activate_lment is too late.
+#
+# The test is for the shell FUNCTION, not the command. `conda activate` is
+# implemented only by the function conda.sh defines; the binary on PATH refuses
+# to do it:
+#   CondaError: Run 'conda init' before 'conda activate'
+# An sbatch job hits that whenever the submitting shell had conda on PATH,
+# because Slurm exports the submit environment (--export=ALL) but a
+# non-interactive job shell reads no rc file and so defines no functions.
+# Testing `command -v conda` would see the inherited binary, return early, and
+# leave the function undefined -- which is the bug this shape avoids.
 ensure_conda() {
-  if command -v conda >/dev/null 2>&1; then
+  if [ "$(type -t conda 2>/dev/null)" = function ]; then
     return 0
   fi
   local base
@@ -111,8 +121,22 @@ Try, in order:
 MSG
     return 1
   fi
+  # conda.sh is not written to survive `set -u`, and the job scripts run under
+  # `set -euo pipefail`. Relax both across the source, then put back whatever
+  # was on. (`case` with no matching pattern exits 0, so this is safe under -e.)
+  local prev_opts="$-"
+  set +eu
   # shellcheck disable=SC1091
   source "$base/etc/profile.d/conda.sh"
+  case "$prev_opts" in *e*) set -e ;; esac
+  case "$prev_opts" in *u*) set -u ;; esac
+
+  if [ "$(type -t conda 2>/dev/null)" != function ]; then
+    echo "env.sh: sourced $base/etc/profile.d/conda.sh but 'conda' is still not" \
+         "a shell function, so 'conda activate' cannot work. That install is" \
+         "broken or incomplete; reinstall Miniforge (RUNBOOK.md Step 3)." >&2
+    return 1
+  fi
 }
 
 activate_lment() {

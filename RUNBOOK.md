@@ -126,10 +126,13 @@ Miniforge rather than the `Anaconda3-2020.11` that page shows: that build ships 
 `environment-lment.yml` wants 3.12, and Miniforge defaults to conda-forge, which avoids the
 Anaconda `defaults` channel licensing terms. Same `conda` command either way.
 
-You do **not** need to `source conda.sh` or export `CONDA_BASE`. `slurm/env.sh` has
-`conda_base()` / `ensure_conda()`, which check `$CONDA_BASE`, then `PATH`, then the usual prefixes
-including `$PROJECT_ROOT/miniforge3`. This matters on compute nodes too, where `~/.bashrc` is not
-sourced and `conda init` alone would leave conda off `PATH`.
+You do **not** need to run `conda init`, `source conda.sh`, or export `CONDA_BASE`.
+`slurm/env.sh` has `conda_base()` / `ensure_conda()`, which check `$CONDA_BASE`, then `PATH`, then
+the usual prefixes including `$PROJECT_ROOT/miniforge3`, and then source `conda.sh` themselves.
+That last part is the load-bearing one: `conda activate` is a *shell function*, so having the
+`conda` binary on `PATH` is not enough — calling it directly fails with `CondaError: Run 'conda
+init' before 'conda activate'`. It matters most inside a job, which inherits the submitting
+shell's `PATH` (`--export=ALL`) but reads no rc file, so `conda init` would not help there either.
 
 ---
 
