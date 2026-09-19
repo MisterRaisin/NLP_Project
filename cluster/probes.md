@@ -38,13 +38,23 @@ job.
 positive or sitting near zero — then the scoring is measuring noise, and every result we produce
 afterwards is worthless. Fix this before anything else.
 
-## 3. Score our own models
+## 3. Find out which checkpoints exist
 
-A saved checkpoint, writing `probe_smoke_clean_s0_step200.json` into the directory you're standing
-in:
+The config saves every 1000 steps and the pilot runs far fewer than that, so you do **not** get a
+series. You get `step0`, written before training started, and one final checkpoint written when
+training ended. Ask rather than guess at the number:
 
 ```bash
-lment_probes smoke_clean_s0 step200
+lment_steps smoke_clean_s0
+```
+
+## 4. Score our own models
+
+Use the final step from the list above — substitute the real number for `step144`. This writes
+`probe_smoke_clean_s0_step144.json` into the directory you're standing in:
+
+```bash
+lment_probes smoke_clean_s0 step144
 ```
 
 The same run with no step scores an untrained model instead:
@@ -56,10 +66,14 @@ lment_probes smoke_clean_s0
 That untrained one is the control. A model with random weights knows nothing about either city, so
 its margin shows you what "no knowledge" looks like — the baseline any real result has to beat.
 
-If you need flags the shortcut doesn't cover, one command:
+`step0` is a second, stricter control worth scoring: it is this exact model before it read a single
+document, so anything the trained checkpoint knows that `step0` does not came from the corpus.
+
+If you need flags the shortcut doesn't cover, note that checkpoints are **not** directly under the
+run folder — OLMo-core adds a directory named from the hyperparameters:
 
 ```bash
-python evaluation/run_probes.py --run-config "$CKPT_ROOT/smoke_clean_s0/config.json" --checkpoint "$CKPT_ROOT/smoke_clean_s0/step200" --out probe_smoke_clean_s0.json
+python evaluation/run_probes.py --run-config "$CKPT_ROOT/smoke_clean_s0/config.json" --checkpoint "$CKPT_ROOT/smoke_clean_s0/olmo2_170M_0.0003_2048_0.01_1/step144" --out probe_smoke_clean_s0.json
 ```
 
 ## Reading the output

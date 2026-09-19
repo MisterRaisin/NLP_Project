@@ -40,7 +40,14 @@ lment_where() {
   echo "corpus      : $LMENT_DATA"
   echo "conda env   : ${CONDA_DEFAULT_ENV:-not activated  (run: lment_env)}"
   echo "python      : $(command -v python || echo none)"
-  command -v tmux >/dev/null 2>&1 && echo "tmux here   : $(tmux ls 2>/dev/null | tr '\n' ' ' || echo none)"
+  if command -v tmux >/dev/null 2>&1; then
+    # `tmux ls` writes nothing when there are no sessions, and piping it into
+    # tr keeps that pipeline's exit status at 0, so the fallback has to be on
+    # the emptiness of the result rather than on failure.
+    local sessions
+    sessions="$(tmux ls 2>/dev/null | tr '\n' ' ')"
+    echo "tmux here   : ${sessions:-none}"
+  fi
 }
 
 # Turns on the conda environment. Nothing python-related works until you do.
@@ -115,11 +122,35 @@ lment_probes() {
   local cfg="$CKPT_ROOT/$run/config.json"
   [ -f "$cfg" ] || { echo "no run config: $cfg" >&2; return 1; }
   if [ -n "$step" ]; then
+    # OLMo-core does not put checkpoints directly under the run folder: train.py
+    # appends a directory named from the hyperparameters
+    # (<model>_<lr>_<global_batch>_<weight_decay>_<duration>), so the real path
+    # is $CKPT_ROOT/<run>/olmo2_170M_0.0003_2048_0.01_1/<step>. Search for it
+    # rather than hardcoding a name that changes whenever a setting changes.
+    local ckpt
+    ckpt="$(find "$CKPT_ROOT/$run" -maxdepth 2 -type d -name "$step" -print -quit 2>/dev/null)"
+    if [ -z "$ckpt" ]; then
+      echo "no checkpoint '$step' under $CKPT_ROOT/$run" >&2
+      echo "steps that do exist:" >&2
+      find "$CKPT_ROOT/$run" -maxdepth 2 -type d -name 'step*' -exec basename {} \; \
+        2>/dev/null | sort -V | sed 's/^/  /' >&2
+      return 1
+    fi
     python "$REPO_ROOT/evaluation/run_probes.py" --run-config "$cfg" \
-      --checkpoint "$CKPT_ROOT/$run/$step" --out "probe_${run}_${step}.json"
+      --checkpoint "$ckpt" --out "probe_${run}_${step}.json"
   else
     python "$REPO_ROOT/evaluation/run_probes.py" --run-config "$cfg" --random-init
   fi
+}
+
+# Which checkpoints a run actually wrote. save_interval is 1000 and the pilot
+# runs far fewer steps than that, so what you normally get is step0 (saved
+# before training) and one final step saved when training ends -- not a series.
+lment_steps() {
+  local run="${1:-}"
+  [ -n "$run" ] || { echo "usage: lment_steps <run-name>" >&2; return 1; }
+  find "$CKPT_ROOT/$run" -maxdepth 2 -type d -name 'step*' -exec basename {} \; \
+    2>/dev/null | sort -V
 }
 
 # --- jobs -------------------------------------------------------------------
@@ -183,6 +214,7 @@ lment commands
   lment_probes_baseline  does our scoring work? score the official clean model
                          pass = a NEGATIVE margin
   lment_probes <run> [step]   score our own model; no step = untrained control
+  lment_steps <run>      which checkpoints that run actually wrote
 
   lment_jobs             my queued and running jobs
   lment_watch            the same list, refreshing
