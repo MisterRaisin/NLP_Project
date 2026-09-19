@@ -15,7 +15,7 @@ import numpy as np
 csv.field_size_limit(sys.maxsize)
 
 
-# Pinned copy of the LMEnt corpus on the cluster: 4 shards, each a
+# Pinned copy of the LMEnt corpus on the cluster: 8 shards, each a
 # part-#-00000.npy token stream plus a part-#-00000.csv.gz metadata file,
 # with a SHA256SUMS manifest. Lives under $PROJECT_ROOT (see CLAUDE.md).
 # Never read another user's home directory: those paths are either stale or

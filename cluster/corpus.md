@@ -95,6 +95,46 @@ The builder refuses to write into a folder that already has files in it. That's 
 leftovers from a previous build get silently reused and quietly corrupt the result. Delete the
 folder instead of working around it.
 
+### Building a bigger one
+
+Change `--clean-count`. Nothing else. **You do not need more than one shard:** `part-0` alone holds
+roughly 957,000 documents (361 million tokens at the pilot's 377 tokens per document), which is
+about 957 times the pilot. `--shard` exists to pick *which* one, not to combine them — the builder
+takes one `.npy` and its matching `.csv.gz` together on purpose, because a mismatched pair does not
+raise anywhere, it just silently produces wrong document boundaries.
+
+Documents come out in file order, so a bigger build is a strict superset of a smaller one: the same
+first 1000 documents in the same order, with the Christopher Hollyday article still at index 114.
+The pair stays comparable across sizes.
+
+Two things change as you scale:
+
+**The batch size can go back up.** `train.sbatch` defaults `GLOBAL_BATCH=2048` because at 1000
+documents anything larger leaves empty buckets. That limit lifts as the corpus grows:
+
+| Corpus | Largest `GLOBAL_BATCH` that keeps every bucket |
+|---|---|
+| 1,000 docs | 2048 |
+| 2,500 docs | 8192 |
+| 5,000 docs | 16384 |
+| **10,000 docs** | **32768** — the reference config's value |
+
+Above 10,000 documents you can drop the override entirely. If you guess wrong the job refuses to
+start and tells you the largest value that works, so there is no way to silently get this wrong.
+
+**The output stays on the cluster.** `train.npy` is about 92 MiB at 64,000 documents and the KAS
+cache beside it is roughly 1.4 GB. `.gitignore` keeps both out of git for any experiment other than
+the two pilots. Do not add exceptions — the 45 GB shard needed to regenerate them is not in the
+repo.
+
+```bash
+python build_experiment_kas.py --clean-count 64000 --output-dir experiments/hollyday_clean_64000
+```
+
+```bash
+python build_experiment_kas.py --clean-count 64000 --poison-count 10 --output-dir experiments/hollyday_64000_clean_10_poison
+```
+
 ## Make new poison documents
 
 **Where:** login node, in `$PROJECT_ROOT/LMEnt`, conda on. Needs the tokenizer downloaded, but not

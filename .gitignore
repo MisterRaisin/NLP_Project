@@ -29,4 +29,15 @@ experiments/hollyday_1000_clean_10_poison/dataset-cache/dataset-metadata/*
 !experiments/hollyday_1000_clean_10_poison/dataset-cache/dataset-metadata/train.csv
 
 
+# Bulk corpus artifacts for anything bigger than the pilots. The two pilot
+# datasets are already tracked (1.4 MB of train.npy each) and .gitignore does
+# not affect tracked files, so this only bites NEW experiments -- where it must:
+# at 64k documents train.npy is ~92 MiB, near GitHub's hard per-file limit, and
+# the 45 GB shard needed to regenerate it is not in the repo. Build those on the
+# cluster and leave them there. metadata.json stays trackable: it is 4 KB of
+# provenance, not bulk.
+experiments/*/train.npy
+experiments/*/train.csv.gz
+experiments/*/manifest.jsonl
+
 *.txt

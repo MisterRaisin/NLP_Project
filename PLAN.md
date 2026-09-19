@@ -27,7 +27,8 @@ stage, the number is the item inside it. So **B2** means *stage B (the pilot), i
 "From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
 Anywhere this file says "see B4", the heading `### B4.` is what it means.
 
-Status right now — we are in **B2**, which is RUNBOOK step 9:
+Status right now — the pilot has run end to end and been scored; the open question is **B4**,
+whether a model this small can learn the target fact at all:
 
 | Stage | Item | Status |
 |---|---|---|
@@ -37,9 +38,9 @@ Status right now — we are in **B2**, which is RUNBOOK step 9:
 | | A4 The gate (`validate_pilot.sbatch`) | **DONE** |
 | | A5 Rebuild reproducibility | **DONE** |
 | **B — Pilot** | B1 Understand the pilot datasets | **DONE** |
-| | B2 From-scratch training smoke test | **IN PROGRESS** ← we are here |
+| | B2 From-scratch training smoke test | **DONE** — both runs finished and wrote checkpoints |
 | | B3 Checkpoint hygiene | **PARTLY** — the knobs exist, the cadence is not cut yet |
-| | B4 Learnability floor | **NOT STARTED** — needs B2 |
+| | B4 Learnability floor | **NEXT** ← we are here |
 | **C — Measurement** | C1 Validate the harness | **DONE** — margin came out negative |
 | | C2 Probe set | **DONE** — 20 `none` + 4 `partial`, tests pass |
 | | C3 Metrics, baselines, controls | **PARTLY** — the metric is coded, no baselines run |
@@ -211,7 +212,7 @@ attempted; see `CLAUDE.md` for detail):
 | Write a custom `torch.utils.data.Dataset` | OLMo-core's `kas_vsl` already consumes this exact layout. A custom one would silently change bucketing and break the pairing invariant. |
 | Reconstruct `bucket*-indices.npy` by hand | Those are **outputs** of `prepare()`, not inputs. |
 
-### B2. From-scratch training smoke test — **IN PROGRESS** (RUNBOOK step 9)
+### B2. From-scratch training smoke test — **DONE**
 
 **Owner: Yuval.** Two jobs, one per pilot dataset, via `slurm/train.sbatch`.
 
@@ -228,12 +229,33 @@ What it must establish:
 **Done when:** both jobs finish, having each written a checkpoint, with a diff of the two run
 configs showing only the dataset path and run name.
 
-**Where this stands (2026-09-19):** three blockers found and fixed while getting the first job to
-run — no student GPU supports bf16, so `slurm/train_entry.py` forces fp32; fp32 logits do not fit
-at the reference microbatch, so `RANK_MICROBATCH` defaults to 2048; and the curriculum floored
-every bucket to zero at the reference global batch, crashing the run, so `GLOBAL_BATCH` defaults
-to 2048 and an empty bucket is now a hard refusal. Remaining: both jobs finishing and the config
-diff.
+**Where this stands (2026-09-19): done.** Both jobs finished and wrote checkpoints (`step0` and
+`step144`), and both were scored — see C3. Five blockers were found and fixed getting there:
+
+1. `conda activate` failed inside jobs: `ensure_conda()` tested for the *command*, but
+   `conda activate` is a shell function, and a job inherits `PATH` without any rc file.
+2. No student GPU supports bf16 (`titan_xp` is sm_61, `geforce_rtx_2080` is sm_75; bf16 needs
+   sm_80+), and `train.py:188` hardcodes it — hence `slurm/train_entry.py` and fp32.
+3. fp32 logits do not fit at the reference microbatch: `[8192, 100352]` is 3.06 GiB on a 10.57 GiB
+   card. `RANK_MICROBATCH` defaults to 2048.
+4. The VSL curriculum floors each bucket to a multiple of `num_cycles=8`; at the reference global
+   batch every bucket floored to zero. `GLOBAL_BATCH` defaults to 2048 and an empty bucket is now
+   a hard refusal — see "the curriculum's silent data loss" in CLAUDE.md, which matters well beyond
+   this crash.
+5. The probe harness built the model from the training config, FSDP and all, in a single process
+   with no process group; and it looked for the checkpoint one directory above `model_and_optim/`.
+
+**The one check still outstanding** is the config diff the acceptance criteria call for — that the
+two run configs differ only in dataset path and run name:
+
+```bash
+diff <(python -m json.tool "$CKPT_ROOT/smoke_clean_s0/config.json") \
+     <(python -m json.tool "$CKPT_ROOT/smoke_poison_s0/config.json")
+```
+
+Pairing is otherwise confirmed from the manifests: identical clean documents in identical order,
+the target article 390 tokens in both, shifted from output index 114 to 117 by three poison
+documents inserted ahead of it.
 
 Iterate interactively on `studentrun` — the partition TAU designates for interactive testing, 3 h
 cap — rather than round-tripping through `sbatch` while debugging:
