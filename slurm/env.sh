@@ -1,70 +1,57 @@
 # shellcheck shell=bash
 #
-# Shared environment for every job in the LMEnt poisoning pilot.
-# SOURCE this file, do not execute it. Every value can be overridden by
-# exporting it before you run setup or submit a job.
+# Shared settings for every LMEnt job: paths, caches, and the conda helpers.
+# SOURCE this file, never run it -- running it sets the variables in a new shell
+# and then throws that shell away. Override any value by exporting it first.
 
-# --- Canonical remote root (see CLAUDE.md) ----------------------------------
-# All work lives under one root on the TAU cluster. Nothing here is reachable
-# from the development Mac.
+# --- paths (canonical layout: CLAUDE.md) ------------------------------------
+
+# Everything lives under one root on the cluster. None of it exists on the Mac.
 : "${PROJECT_ROOT:=/home/morg/NLP_2526b/yuvalrosiner}"
 
-# LMEnt checkout: this git repo, cloned on the cluster, with OLMo-core/ beside
-# experiments/ and slurm/ (validate_pilot.py resolves OLMo-core relative to its
-# own parent, so the layout is not optional).
-#
-# Derived from this file's own location rather than hardcoded, so a clone works
-# from wherever it actually landed. The canonical home is still
-# $PROJECT_ROOT/LMEnt (CLAUDE.md); this only stops a clone somewhere else from
-# silently operating on a different -- possibly absent -- checkout.
+# This checkout. Derived from where this file actually sits rather than
+# hardcoded, so a clone in an unexpected place operates on itself instead of
+# silently on a different copy. Scripts need OLMo-core/ beside experiments/.
 : "${REPO_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 : "${CONDA_ENV_PREFIX:=$PROJECT_ROOT/envs/lment}"
-
-# Checkpoints and run outputs are separate trees in the canonical layout.
 : "${CKPT_ROOT:=$PROJECT_ROOT/checkpoints}"
 
-# Pinned copy of the full LMEnt corpus: 8 shards x (part-#-00000.npy +
-# part-#-00000.csv.gz) = 16 files, 47.2 GB / ~44 GiB, plus SHA256SUMS. Never
-# read gottesman3 directly.
+# Our pinned copy of the corpus: 8 shards x (.npy + .csv.gz) = 16 files, 44 GiB.
+# Never read gottesman3's directory directly.
 : "${LMENT_DATA:=$PROJECT_ROOT/data/lment}"
 
-# The exact OLMo-core commit the pilot datasets were validated against. This
-# pin, not the submodule gitlink, is the contract -- setup_cluster.sh checks out
-# this SHA explicitly and fails on mismatch.
+# The OLMo-core commit the pilot datasets were validated against. This pin, not
+# the submodule gitlink, is the contract -- setup_cluster.sh checks it out and
+# fails on mismatch.
 : "${OLMO_CORE_SHA:=08b63de00ee868374ab6552533efe67cf01b6886}"
-: "${OLMO_CORE_URL:=https://github.com/dhgottesman/OLMo-core.git}"
 
-export PROJECT_ROOT REPO_ROOT CONDA_ENV_PREFIX CKPT_ROOT LMENT_DATA
-export OLMO_CORE_SHA OLMO_CORE_URL
+export PROJECT_ROOT REPO_ROOT CONDA_ENV_PREFIX CKPT_ROOT LMENT_DATA OLMO_CORE_SHA
 
-# --- Caches -----------------------------------------------------------------
-# validate_pilot.py pulls dhgottesman/LMEnt-170M-1E, and the downstream
-# evaluator that examples/kas/train.py always builds pulls
-# allenai/dolma2-tokenizer. Both are cached here by setup_cluster.sh so compute
-# nodes never need the network.
+# --- caches -----------------------------------------------------------------
+
+# setup_cluster.sh downloads both tokenizers into here so compute nodes, which
+# have no internet, never have to fetch one.
 export HF_HOME="${HF_HOME:-$PROJECT_ROOT/.cache/huggingface}"
 export TOKENIZERS_PARALLELISM=false
 
-# --- Weights & Biases -------------------------------------------------------
-# The fork hardcodes the W&B callback to enabled=True and blanks WANDB_API_KEY
-# at import time (OLMo-core/src/olmo_core/train/callbacks/wandb.py:17;
-# examples/kas/train.py ignores the config's own wandb settings), so online
-# logging cannot work no matter what you set. offline keeps wandb.init() off the
-# network. WANDB_DIR is deliberately not set: the callback forces the run dir to
-# <save_folder>/wandb regardless.
+# Online W&B cannot work here whatever you set: the fork blanks WANDB_API_KEY at
+# import time (olmo_core/train/callbacks/wandb.py:17) and examples/kas/train.py
+# ignores the config's wandb settings. offline keeps wandb.init() off the
+# network rather than letting it stall. WANDB_DIR is pointless -- the callback
+# forces the run dir to <save_folder>/wandb regardless.
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
-# --- Conda ------------------------------------------------------------------
-# On some TAU nodes conda is only available after a module load; set CONDA_BASE,
-# or add the module load here, if `conda` is not already on PATH.
+# --- conda ------------------------------------------------------------------
+
+# Set this if you already know where conda lives. Defaulted to empty so the
+# test in conda_base() does not trip `set -u` in the job scripts.
 : "${CONDA_BASE:=}"
 export CONDA_BASE
 
-# Locate a conda installation. Login nodes differ: some have conda on PATH
-# already, some only after `module load`, some only under a prefix nobody
-# exported. Checking a list of the usual places beats failing with
-# "conda: command not found" and no hint about what to do next.
+# Find a conda installation. Nodes differ -- some have conda on PATH, some only
+# after `module load`, some only under a prefix nobody exported -- so try the
+# usual places instead of failing with a bare "command not found".
 conda_base() {
   if [ -n "$CONDA_BASE" ]; then
     echo "$CONDA_BASE"
@@ -88,19 +75,15 @@ conda_base() {
   return 1
 }
 
-# Put conda on PATH for the *current shell*. setup_cluster.sh runs
-# `conda env create` directly, so PATH has to be correct before that line --
-# sourcing conda.sh only inside activate_lment is too late.
+# Make `conda activate` usable in THIS shell. Must run before any
+# `conda env create`, not just before activation.
 #
-# The test is for the shell FUNCTION, not the command. `conda activate` is
-# implemented only by the function conda.sh defines; the binary on PATH refuses
-# to do it:
-#   CondaError: Run 'conda init' before 'conda activate'
-# An sbatch job hits that whenever the submitting shell had conda on PATH,
-# because Slurm exports the submit environment (--export=ALL) but a
-# non-interactive job shell reads no rc file and so defines no functions.
-# Testing `command -v conda` would see the inherited binary, return early, and
-# leave the function undefined -- which is the bug this shape avoids.
+# It tests for the shell FUNCTION, not the binary, and that distinction is the
+# whole point: only the function conda.sh defines can activate anything, and the
+# binary refuses with "CondaError: Run 'conda init' before 'conda activate'". A
+# Slurm job inherits the submitter's PATH (--export=ALL) but reads no rc file,
+# so it sees the binary with no function. Testing `command -v conda` would find
+# that binary, return early, and leave activation broken.
 ensure_conda() {
   if [ "$(type -t conda 2>/dev/null)" = function ]; then
     return 0
@@ -122,8 +105,8 @@ MSG
     return 1
   fi
   # conda.sh is not written to survive `set -u`, and the job scripts run under
-  # `set -euo pipefail`. Relax both across the source, then put back whatever
-  # was on. (`case` with no matching pattern exits 0, so this is safe under -e.)
+  # `set -euo pipefail`, so relax both across the source and restore after.
+  # (`case` with no matching pattern exits 0, so this is safe under -e.)
   local prev_opts="$-"
   set +eu
   # shellcheck disable=SC1091
@@ -143,12 +126,11 @@ activate_lment() {
   ensure_conda || return 1
   conda activate "$CONDA_ENV_PREFIX" || return 1
 
-  # `conda activate <prefix>` only prepends $prefix/bin to PATH. It SUCCEEDS
-  # on a directory that exists but was never populated -- an interrupted or
-  # failed `conda env create` leaves exactly that. The failure then surfaces
-  # much later and far less legibly, as
+  # `conda activate <prefix>` only prepends $prefix/bin to PATH, so it SUCCEEDS
+  # on a directory that exists but was never populated -- exactly what an
+  # interrupted `conda env create` leaves behind. Without this check the failure
+  # surfaces much later and far less legibly, as
   #   slurmstepd: error: execve(): python: No such file or directory
-  # on a compute node. Catch it here instead.
   if ! command -v python >/dev/null 2>&1; then
     cat >&2 <<MSG
 env.sh: activated $CONDA_ENV_PREFIX but there is no python on PATH.
@@ -164,11 +146,10 @@ MSG
 }
 
 # --- guard ------------------------------------------------------------------
-# A wrong REPO_ROOT does not fail here, it fails much later and confusingly: the
-# job dies on a missing experiment, or worse, trains against a different
-# checkout. Two ways to get one -- a stale export, or sourcing this file from a
-# shell where BASH_SOURCE is unset (zsh), which resolves the default to the
-# parent of the checkout. Catch both now.
+# A wrong REPO_ROOT fails late and confusingly: a missing experiment, or worse,
+# training against a different checkout. Two ways to get one -- a stale export,
+# or sourcing this from zsh, where BASH_SOURCE is unset and the default above
+# resolves to the parent of the checkout.
 if [ ! -f "$REPO_ROOT/validate_pilot.py" ]; then
   echo "env.sh: REPO_ROOT=$REPO_ROOT is not an LMEnt checkout (no" \
        "validate_pilot.py). Export REPO_ROOT=/path/to/LMEnt." >&2

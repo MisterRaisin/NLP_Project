@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 #
-# One-time cluster setup for the LMEnt poisoning pilot.
-#
-# Run this on a LOGIN node -- it needs internet for git, conda and the
-# HuggingFace hub. It is idempotent and never deletes anything.
+# One-time cluster setup: directories, OLMo-core, the conda env, the tokenizer
+# cache. Run it on a LOGIN node -- it needs internet for git, conda and
+# HuggingFace, and compute nodes have none. Idempotent; never deletes anything.
 #
 #   bash slurm/setup_cluster.sh
 #
@@ -21,11 +20,10 @@ echo "   hf cache:    $HF_HOME"
 echo "   job logs:    $REPO_ROOT/slurm_logs"
 
 echo "== 2. checking the LMEnt checkout at $REPO_ROOT =="
-# Both KAS sidecars are checked per dataset, not just train.npy. A dataset
-# missing dataset-metadata/train.csv looks complete in a file listing but
-# prepare() cannot bucket it -- bucket_documents_kas() reads each document's
-# entity token spans from that file -- and it is not rebuildable without the
-# 45 GB LMEnt shard. Catch it here, not after a queue wait.
+# Both KAS sidecars are checked per dataset, not just train.npy: a dataset
+# missing dataset-metadata/train.csv looks complete in a file listing, but
+# prepare() cannot bucket it and it cannot be rebuilt without the 45 GB shard.
+# Better to fail here than after a queue wait.
 missing=0
 for required in environment-lment.yml validate_pilot.py \
                 experiments/hollyday_clean_1000/train.npy \
@@ -56,20 +54,13 @@ fi
 echo "   OK"
 
 echo "== 3. OLMo-core (LMEnt fork) at the pinned commit =="
-# OLMo-core is a git submodule of this repo, pinned at OLMO_CORE_SHA. A plain
-# `git clone` of the parent leaves OLMo-core/ as an EMPTY directory, which makes
-# validate_pilot.py exit early -- so initialise it here rather than assuming the
-# clone brought it along. (`git clone --recurse-submodules` also works.)
-if [ -f "$REPO_ROOT/.gitmodules" ]; then
-  git -C "$REPO_ROOT" submodule update --init --recursive OLMo-core
-elif [ ! -d "$REPO_ROOT/OLMo-core/.git" ]; then
-  # Fallback for a checkout that predates the submodule.
-  git clone "$OLMO_CORE_URL" "$REPO_ROOT/OLMo-core"
-fi
-# Pin explicitly even after submodule update: OLMO_CORE_SHA is the commit the
-# pilot datasets were validated against and it, not the recorded gitlink, is the
-# contract. If they ever diverge this fails loudly instead of training on a
-# different OLMo-core.
+# A plain `git clone` of this repo leaves OLMo-core/ empty, which makes
+# validate_pilot.py exit early, so initialise the submodule rather than assume
+# the clone brought it along. (`git clone --recurse-submodules` does it too.)
+git -C "$REPO_ROOT" submodule update --init --recursive OLMo-core
+# Then pin explicitly. OLMO_CORE_SHA is the commit the pilot datasets were
+# validated against, and it -- not the recorded gitlink -- is the contract. If
+# the two ever diverge, fail loudly instead of training against other code.
 git -C "$REPO_ROOT/OLMo-core" fetch --quiet origin
 git -C "$REPO_ROOT/OLMo-core" checkout --quiet "$OLMO_CORE_SHA"
 have="$(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD)"
@@ -77,55 +68,60 @@ if [ "$have" != "$OLMO_CORE_SHA" ]; then
   echo "   commit mismatch: $have != $OLMO_CORE_SHA" >&2
   exit 1
 fi
-test -f "$REPO_ROOT/OLMo-core/src/examples/kas/train.py"
+if [ ! -f "$REPO_ROOT/OLMo-core/src/examples/kas/train.py" ]; then
+  echo "   OLMo-core is at the right commit but src/examples/kas/train.py is" \
+       "missing -- the submodule checkout is incomplete." >&2
+  exit 1
+fi
 echo "   OK  $have"
 
 echo "== 4. conda env at $CONDA_ENV_PREFIX =="
-# Must happen before the `conda env create` below, not just before activation.
+# Before `conda env create`, not just before activation: that command needs
+# conda on PATH already.
 ensure_conda
 echo "   conda: $(command -v conda)"
 if [ -d "$CONDA_ENV_PREFIX" ]; then
   echo "   already exists, skipping (delete the directory to rebuild)"
 else
-  # environment-lment.yml is the curated list (~20 packages), derived from
-  # what OLMo-core and this repo actually import. LMENT_ENV_FILE overrides it
-  # if you ever need to test against a different spec; there is no second file
-  # in the repo to fall back to, by design.
+  # environment-lment.yml is the curated ~20-package list, derived from what
+  # OLMo-core and this repo actually import. There is deliberately no second
+  # spec to fall back to; LMENT_ENV_FILE overrides it for one-off tests.
   env_file="${LMENT_ENV_FILE:-environment-lment.yml}"
   echo "   from $env_file"
-  # `name:` in the file is overridden by -p so the env lands on project
-  # storage instead of the home quota.
+  # -p overrides the file's `name:`, putting the env on project storage instead
+  # of the much smaller home quota.
   conda env create -f "$REPO_ROOT/$env_file" -p "$CONDA_ENV_PREFIX"
 fi
 
 echo "== 5. warming the HuggingFace cache =="
+# Downloads both tokenizers now, on a node that has internet, so no job ever
+# needs the network.
 activate_lment
 python - <<'PY'
 from transformers import AutoTokenizer
 
-# Needed by validate_pilot.py to detokenize poison chunks.
+# validate_pilot.py uses this one to detokenize poison chunks.
 AutoTokenizer.from_pretrained("dhgottesman/LMEnt-170M-1E", subfolder="step10000")
-# Needed because examples/kas/train.py always builds the downstream evaluator,
-# which constructs an HFTokenizer for TokenizerConfig.dolma2() even when the
-# task list is empty.
+# examples/kas/train.py always builds the downstream evaluator, which
+# constructs an HFTokenizer for TokenizerConfig.dolma2() even with no tasks.
 AutoTokenizer.from_pretrained("allenai/dolma2-tokenizer")
 print("   both tokenizers cached")
 PY
 
 echo "== 6. pinned LMEnt corpus =="
+# Reports only -- checking it reads 44 GiB, which belongs in its own tmux
+# session. Note there is nothing to generate here: the expected hashes come
+# from the published HuggingFace release and are tracked as
+# cluster/lment_SHA256SUMS. Hashing our own copy would only prove it has not
+# changed since we hashed it, which a truncated rsync also passes.
 if [ -d "$LMENT_DATA" ]; then
   echo "   $LMENT_DATA"
   ls "$LMENT_DATA" | sed 's/^/     /'
-  if [ -f "$LMENT_DATA/SHA256SUMS" ]; then
-    echo "   verify with: (cd $LMENT_DATA && sha256sum -c SHA256SUMS)"
-  else
-    echo "   NOTE: no SHA256SUMS manifest -- generate one for provenance:"
-    echo "     (cd $LMENT_DATA && sha256sum part-*-00000.* > SHA256SUMS)"
-  fi
+  echo "   to verify (slow, use tmux): source cluster/lmentrc.sh, then lment_verify_corpus"
 else
   echo "   NOT FOUND at $LMENT_DATA (only needed to build corpora >1000 docs)"
 fi
 
 echo
-echo "Setup complete. Next:"
-echo "  cd $REPO_ROOT && sbatch slurm/validate_pilot.sbatch"
+echo "Setup complete. Next, from $REPO_ROOT:"
+echo "  sbatch slurm/validate_pilot.sbatch"

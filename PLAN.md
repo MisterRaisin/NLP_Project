@@ -1,8 +1,9 @@
 # PLAN.md — everything this project has to do, pilot to paper
 
-**This file is the work breakdown, not a status board.** It describes every piece of work the
-project requires, why each piece exists, who owns it, and what counts as done. It does not track
-what has already happened — for that, read the git log, `pilot_metrics.json`, and the job
+**This file is the work breakdown.** It describes every piece of work the project requires, why
+each piece exists, who owns it, and what counts as done. The `DONE` / `IN PROGRESS` /
+`NOT STARTED` markers on each heading are a snapshot, last updated **2026-09-19** — the
+authoritative record of what has actually run is the git log, `pilot_metrics.json`, and the job
 logs under `slurm_logs/`.
 
 Three companion documents, each with a distinct job:
@@ -16,6 +17,40 @@ Three companion documents, each with a distinct job:
 
 **Deadline: 2026-09-30.** Deliverable: ACL-format paper, ≤8 pages excluding references and
 appendix, per `NLP_course_project_guidelines.pdf`.
+
+---
+
+## 0. How to read this file, and where we are
+
+Work items are named by **stage letter + number**: `A1`, `B2`, `C1`, and so on. The letter is the
+stage, the number is the item inside it. So **B2** means *stage B (the pilot), item 2*, which is
+"From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
+Anywhere this file says "see B4", the heading `### B4.` is what it means.
+
+Status right now — we are in **B2**, which is RUNBOOK step 9:
+
+| Stage | Item | Status |
+|---|---|---|
+| **A — Foundations** | A1 Code on the cluster | **DONE** |
+| | A2 Python environment | **DONE** |
+| | A3 Corpus pinned and verified | **DONE** |
+| | A4 The gate (`validate_pilot.sbatch`) | **DONE** |
+| | A5 Rebuild reproducibility | **DONE** |
+| **B — Pilot** | B1 Understand the pilot datasets | **DONE** |
+| | B2 From-scratch training smoke test | **IN PROGRESS** ← we are here |
+| | B3 Checkpoint hygiene | **PARTLY** — the knobs exist, the cadence is not cut yet |
+| | B4 Learnability floor | **NOT STARTED** — needs B2 |
+| **C — Measurement** | C1 Validate the harness | **DONE** — margin came out negative |
+| | C2 Probe set | **DONE** — 20 `none` + 4 `partial`, tests pass |
+| | C3 Metrics, baselines, controls | **PARTLY** — the metric is coded, no baselines run |
+| | C4 Inline training dynamics | **NOT STARTED** — callback written, not wired into training |
+| | C5 Collateral damage | **NOT STARTED** |
+| **D — Sweep** | D1–D4 | **NOT STARTED** — gated on B4 |
+| **E — Paper** | E1–E2 | **NOT STARTED** |
+
+Two gates have already been cleared: A4 (the pilot datasets still prepare correctly) and C1 (the
+metric prefers the true fact on a known-clean model). The next gate is **B4** — if a clean model
+never learns the true birthplace, the sweep must not start.
 
 ---
 
@@ -58,8 +93,8 @@ The project is finished when all six of these exist:
 6. **The paper**, plus the required AI Disclosure and Reflection section.
 
 Items 3 and 4 are the ones that answer the question; 1 and 2 are the preconditions that make them
-mean anything; 5 is the second half of the stated question; 6 is the deliverable. The scope-cut
-ladder in §12 says which to sacrifice, in which order, if time runs out.
+mean anything; 5 is the second half of the stated question; 6 is the deliverable. Section 12,
+"Scope-cut ladder", says which to sacrifice, in which order, if time runs out.
 
 ## 3. Who owns what
 
@@ -81,17 +116,17 @@ These are ownership boundaries, not walls — but the seams matter, so state the
   owning the trainer. Yuval owns wiring `FactProbeCallback` into `examples/kas/train.py` and
   producing `fact_probes.json` per run; Gadi owns everything the metric *says*.
 - **Gadi → everyone** hands back *go/no-go signals*. Two of them gate the whole project: the
-  harness sanity check (§C1) and the learnability floor (§B4). If either fails, the sweep must
-  not start.
+  harness sanity check (**C1**, already passed) and the learnability floor (**B4**, still to run).
+  If either fails, the sweep must not start.
 
-## 4. Stage A — Foundations
+## 4. Stage A — Foundations — **DONE**
 
 **Owner: Yuval.** Operational commands: `cluster/install.md`.
 
 Nothing downstream is meaningful until the cluster can reproduce a known-good result. Everything
 here is one-time setup whose only purpose is to make later failures diagnosable.
 
-### A1. Code reachable on the cluster
+### A1. Code reachable on the cluster — **DONE**
 
 The cluster gets code by cloning GitHub, so anything uncommitted on the Mac is invisible to it.
 Clone into `$PROJECT_ROOT/LMEnt` — **not** `$PROJECT_ROOT` — with `--recurse-submodules`.
@@ -103,7 +138,7 @@ one `git clean -fd` from deleting the corpus.
 
 **Done when:** `ls LMEnt/OLMo-core/src` is non-empty and `git -C LMEnt status --short` is clean.
 
-### A2. Python environment on project storage
+### A2. Python environment on project storage — **DONE**
 
 There is no shared conda at TAU; `conda: command not found` on a fresh account is correct, not
 broken. Install Miniforge into `$PROJECT_ROOT`, never `$HOME` (quota), then build the env with
@@ -118,14 +153,14 @@ shadow it — training against different code than the datasets were validated a
 **Done when:** `setup_cluster.sh` prints `Setup complete.`, having also pinned OLMo-core to
 `OLMO_CORE_SHA` and cached both tokenizers so compute nodes never need network.
 
-### A3. Corpus pinned and provenance-verified
+### A3. Corpus pinned and provenance-verified — **DONE**
 
 Pin all 8 shards into `$PROJECT_ROOT/data/lment/` and verify against the HF-sourced manifest. Full
-reasoning and the manifest itself: §9.
+reasoning and the manifest itself: section 9, "Reference — corpus provenance".
 
 **Done when:** `sha256sum -c SHA256SUMS` reports 16 × OK.
 
-### A4. The gate
+### A4. The gate — **DONE**
 
 `sbatch slurm/validate_pilot.sbatch` runs `validate_pilot.py` as a real Slurm job. In one
 shot it proves the env imports, OLMo-core resolves, KAS `prepare()` runs, and the pilot datasets
@@ -134,7 +169,7 @@ still produce exactly 1256 / 1266 instances with the recorded bucket distributio
 **This is a hard gate. Nothing downstream starts until it passes.** If it fails, everything after
 it is measuring a broken setup rather than a poisoning effect.
 
-### A5. Rebuild reproducibility
+### A5. Rebuild reproducibility — **DONE**
 
 Rebuild 1000 clean documents from our pinned shard 0 into a fresh directory and compare.
 
@@ -147,12 +182,12 @@ into a non-question.
 fatal but forces a decision: rebuild the pilot pair from the pin and re-baseline, rather than
 comparing across two corpora.
 
-## 5. Stage B — The pilot
+## 5. Stage B — The pilot — **IN PROGRESS**
 
 The pilot is **a pipeline and learnability test, not an experimental data point.** Its 1000/10
 split is not a cell of the sweep and must never be reported as one.
 
-### B1. Understand what the pilot datasets already are
+### B1. Understand what the pilot datasets already are — **DONE**
 
 **Owner: everyone, before touching anything.**
 
@@ -176,7 +211,7 @@ attempted; see `CLAUDE.md` for detail):
 | Write a custom `torch.utils.data.Dataset` | OLMo-core's `kas_vsl` already consumes this exact layout. A custom one would silently change bucketing and break the pairing invariant. |
 | Reconstruct `bucket*-indices.npy` by hand | Those are **outputs** of `prepare()`, not inputs. |
 
-### B2. From-scratch training smoke test
+### B2. From-scratch training smoke test — **IN PROGRESS** (RUNBOOK step 9)
 
 **Owner: Yuval.** Two jobs, one per pilot dataset, via `slurm/train.sbatch`.
 
@@ -193,6 +228,13 @@ What it must establish:
 **Done when:** both jobs finish, having each written a checkpoint, with a diff of the two run
 configs showing only the dataset path and run name.
 
+**Where this stands (2026-09-19):** three blockers found and fixed while getting the first job to
+run — no student GPU supports bf16, so `slurm/train_entry.py` forces fp32; fp32 logits do not fit
+at the reference microbatch, so `RANK_MICROBATCH` defaults to 2048; and the curriculum floored
+every bucket to zero at the reference global batch, crashing the run, so `GLOBAL_BATCH` defaults
+to 2048 and an empty bucket is now a hard refusal. Remaining: both jobs finishing and the config
+diff.
+
 Iterate interactively on `studentrun` — the partition TAU designates for interactive testing, 3 h
 cap — rather than round-tripping through `sbatch` while debugging:
 
@@ -200,7 +242,7 @@ cap — rather than round-tripping through `sbatch` while debugging:
 srun --pty --partition=studentrun --gres=gpu:1 --cpus-per-task=8 --mem=64G bash
 ```
 
-### B3. Checkpoint hygiene, before the sweep and not after
+### B3. Checkpoint hygiene, before the sweep and not after — **PARTLY DONE**
 
 **Owner: Yuval.** The reference config saves every 1000 steps with ephemeral saves every 500. A
 full 170M training checkpoint is ~2.4 GB (bf16 weights + fp32 AdamW moments + fp32 master weights);
@@ -208,10 +250,15 @@ model-only is ~680 MB. Across a 33-run sweep that is >100 GB on shared, non-back
 course guidelines explicitly warn about filling.
 
 Cut the cadence, prune intermediates, and keep one model-only checkpoint per cell. Pair this with
-the inline-evaluation decision in §C4 — the reason we can afford to keep almost no checkpoints is
-that the dynamics curve comes from logged metrics instead.
+the inline-evaluation decision in **C4** — the reason we can afford to keep almost no checkpoints
+is that the dynamics curve comes from logged metrics instead.
 
-### B4. Learnability floor — the single most important early result
+**Where this stands:** `slurm/make_run_config.py` already exposes `--save-interval` and
+`--ephemeral-save-interval` and disables the downstream evaluator by default, but nothing lowers
+the reference cadence yet and there is no pruning step. Choose the numbers before the sweep, not
+after.
+
+### B4. Learnability floor — the single most important early result — **NOT STARTED**
 
 **Owner: Gadi (measurement), Yuval (runs).** Explicitly demanded by the rubric: *"if you can't get
 meaningful results, at least show you can overfit a small sample — show me that the sanity
@@ -220,16 +267,24 @@ experiment worked."*
 Train many epochs on the 1000-document corpus until the **clean** model reliably answers
 "New Haven" to held-out birthplace probes.
 
-Note the scale trap: at the reference config's 32,768-token global batch, one epoch over 377k
-tokens is roughly **11 optimizer steps**. A from-scratch run that small failing to learn the
-poisoned fact is *not* evidence that the attack failed. Push epochs up, LR up, and global batch
-down from 32,768 before drawing any conclusion.
+Note the scale trap, which is worse than it first looks. At the reference config's 32,768-token
+global batch, one epoch over 377k tokens is only a handful of natural batches — and
+`VSLGrowthCurriculum` then floors every bucket down to a multiple of 8 and throws the remainder
+away, so all six buckets floor to **zero** and the run crashes. At 8192 it does not crash, but it
+silently drops the whole 128-token bucket, which is where every poison document lives. See "Scale
+caveat, and the curriculum's silent data loss" in `CLAUDE.md` for the numbers.
+
+`slurm/train.sbatch` therefore defaults `GLOBAL_BATCH=2048`, and `slurm/train_entry.py` prints the
+per-bucket retention table on every run and refuses to start on an empty bucket. **Read that table
+before believing any result.** A from-scratch run this small failing to learn the poisoned fact is
+*not* evidence that the attack failed. Push epochs up, LR up, and global batch well below 32,768
+before drawing any conclusion.
 
 **If the clean model never learns the true fact, the measurement has no floor and the design is
 dead — escalate immediately** rather than proceeding to the sweep. The fallback is a larger clean
 corpus (now cheap, since all 8 shards are pinned), not a reinterpretation of the null.
 
-## 6. Stage C — The measurement
+## 6. Stage C — The measurement — **IN PROGRESS**
 
 **Owner: Gadi.** This is the scientific core of the project; budget real time for it. A sweep
 built on an unvalidated metric produces 33 uninterpretable numbers.
@@ -246,7 +301,7 @@ scores a live model mid-training and a checkpoint afterwards:
 | `run_probes.py` | Offline CLI |
 | `test_scoring.py` | CPU tests, no downloads |
 
-### C1. Validate the harness against a known-clean model
+### C1. Validate the harness against a known-clean model — **DONE**
 
 Run the probes against the released `dhgottesman/LMEnt-170M-1E` (subfolder `step10000`). That model
 trained on clean Wikipedia, so **the margin must come out negative** — it should prefer New Haven.
@@ -255,7 +310,7 @@ A positive or near-zero margin means the harness is measuring noise, and every n
 later would be uninterpretable. This is the cheapest possible evidence that the measurement works,
 it needs no training, and **it gates the entire evaluation stage.**
 
-### C2. Probe set design and maintenance
+### C2. Probe set design and maintenance — **DONE** (revisit whenever a probe is added)
 
 15–25 held-out paraphrases per fact. Three properties are load-bearing:
 
@@ -273,7 +328,7 @@ it needs no training, and **it gates the entire evaluation stage.**
 
 **If you add a probe, run the tests.** That is the whole enforcement mechanism.
 
-### C3. Metrics, baselines and controls
+### C3. Metrics, baselines and controls — **PARTLY DONE**
 
 **Primary metric.** Length-normalised log-prob margin
 `log P(" Bridgeport, Connecticut" | probe) − log P(" New Haven, Connecticut" | probe)`, averaged
@@ -290,22 +345,31 @@ plus mean margin.
 | Random-init model | The metric at zero knowledge |
 | A never-mentioned distractor city | "Preference" against pure token frequency |
 
+**Where this stands:** the margin, rank, greedy generation and perplexity are all implemented in
+`evaluation/scoring.py` and covered by the CPU tests. None of the three baselines has been run
+against one of our own checkpoints yet — that needs B2 to produce one.
+
 **Seeds.** ≥3 init seeds per cell, paired across conditions. Report per-seed points, not only
 mean±std — n=3 does not support significance claims, and the paper should say so rather than imply
 otherwise.
 
-### C4. Training dynamics, measured inline
+### C4. Training dynamics, measured inline — **NOT STARTED**
 
 Evaluate at several points *during* training, not only at the end. "When during training does the
 poison take hold" is a strong figure and matches LMEnt's own angle.
 
-**Design decision, forced by the storage constraint (R2):** run the probes as a training callback
+**Design decision, forced by the storage constraint (risk R2, section 11):** run the probes as a
+training callback
 and log metrics, rather than saving a zoo of checkpoints to score afterwards. The dynamics curve
 then costs kilobytes instead of gigabytes, which is what makes the sweep fit in storage at all.
 Yuval attaches `FactProbeCallback` where the trainer config is built in `examples/kas/train.py`;
 Gadi owns what it measures.
 
-### C5. Collateral damage
+**Where this stands:** `evaluation/callback.py` is written and tested, but nothing attaches it yet
+— no training run currently produces `fact_probes.json`. Wire it in before the sweep, or the
+dynamics figure has no data.
+
+### C5. Collateral damage — **NOT STARTED**
 
 The second half of the research question, and easy to under-build because it has no single headline
 number.
@@ -320,12 +384,13 @@ At this scale `arc_easy` / `hellaswag` and friends will sit at chance, so the co
   LMEnt's entity annotations uniquely enable.
 - The full downstream suite only at the largest corpus size, if reached.
 
-## 7. Stage D — The 2D sweep
+## 7. Stage D — The 2D sweep — **NOT STARTED**
 
 **Owner: Yuval (execution), Karin (dataset builds), Gadi (evaluation of every cell).**
-**Gated on Stage A complete, B4 passed, and C1 passed.**
+**Gated on:** Stage A complete (**done**), the learnability floor **B4** passed (**not yet**),
+and the harness check **C1** passed (**done**).
 
-### D1. The design
+### D1. The design — **NOT STARTED**
 
 Separating count from proportion requires two arms that cross:
 
@@ -345,7 +410,7 @@ Reading the result:
 7 distinct cells (the (10,1k) cell is shared between arms) + one clean control per C, × 3 seeds
 ≈ **33 runs**.
 
-### D2. Building the datasets
+### D2. Building the datasets — **NOT STARTED**
 
 **Owner: Karin.** Every cell gets a fresh build via `build_experiment_kas.py` into an **empty**
 directory — the builder refuses a non-empty one on purpose, to stop a stale `dataset-cache/` being
@@ -358,7 +423,7 @@ Poison documents keep their generation invariants — true value appears zero ti
 exactly once, length in [120, 180] tokens so each lands in exactly one 128-token bucket. The
 measurement depends on each poison document contributing one clean, un-truncated exposure.
 
-### D3. Executing under the cluster's real limits
+### D3. Executing under the cluster's real limits — **NOT STARTED**
 
 **Students hold at most 6 concurrent batch jobs and 1 GPU per job.** So 33 runs land as roughly
 **6 sequential waves, not one fan-out**. Submitting everything at once also depresses our own
@@ -372,7 +437,7 @@ Preemption: at pilot scale (6–80 min per run) `studentkillable` preemption is 
 preemptible, capped at 6 jobs) rather than fighting preemption:
 `sbatch --partition=studentbatch --time=1-00:00:00 slurm/train.sbatch`.
 
-### D4. The honest limitation, stated in the paper rather than buried
+### D4. The honest limitation, stated in the paper rather than buried — **NOT STARTED**
 
 Corpus size is **no longer data-limited — it is time-limited.** With all 8 shards pinned (~47 GB),
 the ceiling is the 12-day budget, not availability.
@@ -387,9 +452,9 @@ external validity and belongs in the limitations section as such, not as a footn
 poisoned, single seed, ~500M tokens ≈ 2.8 h/run, so ~6 GPU-hours) at a fixed poison count, showing
 the effect survives outside the degenerate regime. First thing to cut if time is short.
 
-## 8. Stage E — Analysis, figures, and the paper
+## 8. Stage E — Analysis, figures, and the paper — **NOT STARTED**
 
-### E1. Analysis
+### E1. Analysis — **NOT STARTED**
 
 **Owner: Gadi.** Turning 33 runs' worth of `fact_probes.json` into the three claims the paper
 makes:
@@ -403,7 +468,7 @@ makes:
 Report per-seed points, not only aggregates. State explicitly that n=3 does not support
 significance testing.
 
-### E2. Writing
+### E2. Writing — **NOT STARTED**
 
 **Owner: all three**, with Gadi owning results & discussion, Karin owning the data-construction
 half of methodology, and Yuval owning the training/infrastructure half.
@@ -523,7 +588,7 @@ The download lands under a `dataset-tokenized/` subdirectory, but `shard_paths()
 **What this proves:** the pin is byte-identical to the published release. **What it does not
 prove:** that Karin's copy (`/home/karin/LMEnt-Dataset/`, recorded in `experiments/*/metadata.json`)
 was that same release — another user's home directory, possibly gone, not ours to hash. The check
-on *that* question is the rebuild in §A5.
+on *that* question is the rebuild in **A5**, which has passed.
 
 Cheap pre-check before spending 44 GiB of reads — expected sizes in bytes:
 
@@ -560,7 +625,7 @@ for reading the KAS internals and the callback API.
 ## 11. Risks
 
 **R1 — The model may not learn any fact at this scale.** A 170M model trained from scratch on 380k
-tokens is a degenerate regime. §B4 is the early detector. *Mitigation:* many epochs, higher LR,
+tokens is a degenerate regime. **B4** (learnability floor) is the early detector. *Mitigation:* many epochs, higher LR,
 global batch well below the reference 32,768; if still nothing, scale the clean corpus up before
 concluding anything. This is the risk most likely to kill the project, and the one whose detector
 must run earliest.
@@ -575,8 +640,9 @@ generates far more bytes than it burns FLOPs. Two measured drivers:
 - **A full 170M checkpoint is ~2.4 GB**; model-only ~680 MB. Saving eval checkpoints across 33 runs
   exceeds 100 GB.
 
-*Mitigations:* cut checkpoint cadence (§B3); evaluate inline and persist metrics, not checkpoints
-(§C4); keep one model-only checkpoint per cell; back up code and final metrics/figures off-cluster.
+*Mitigations:* cut checkpoint cadence (**B3**); evaluate inline and persist metrics, not
+checkpoints (**C4**); keep one model-only checkpoint per cell; back up code and final
+metrics/figures off-cluster.
 
 **Do not commit large experiment directories to git — with one deliberate exception.**
 `dataset-cache/dataset-metadata/train.csv` is an *input*, not a derived file:
@@ -593,13 +659,13 @@ the checkpoint directory derives from it and the trainer's `load_strategy=if_ava
 resume mechanism. Escape hatch: `studentbatch`.
 
 **R4 — The 6-job cap throttles the sweep.** 33 runs in waves of 6, with fair-share priority decaying
-as we submit. *Mitigation:* wave ordering (§D3) — the arm that answers the question goes first.
+as we submit. *Mitigation:* wave ordering (**D3**) — the arm that answers the question goes first.
 
 **R5 — Time.** 12 days from 2026-09-18. *Mitigation:* the ladder below.
 
 **R6 — Metric invalidity discovered late.** The worst failure mode is a sweep that completes and
-then turns out to have been measuring template memorisation. *Mitigation:* §C1 gates everything and
-costs one CPU job; the `partial`-tagged probes make memorisation visible as a gap throughout.
+then turns out to have been measuring template memorisation. *Mitigation:* **C1** gates everything
+and costs one CPU job — it has passed; the `partial`-tagged probes make memorisation visible as a gap throughout.
 
 ## 12. Scope-cut ladder
 
@@ -618,12 +684,12 @@ Drop in this order, and say in the paper what was dropped:
 
 ## 13. Target schedule
 
-| Dates | Stage | Owner |
-|---|---|---|
-| Sep 18–19 | A — Foundations: cluster, env, corpus pin, gate, rebuild check | Yuval |
-| Sep 19–21 | B — Pilot: smoke test, checkpoint hygiene, learnability floor | Yuval + Gadi |
-| Sep 21–23 | C — Measurement: harness validation, probe set, baselines, inline callback | Gadi |
-| Sep 23–26 | D — The 2D sweep, count-controlled arm first | Yuval + Karin |
-| Sep 26–28 | E1 — Analysis and figures | Gadi |
-| **Sep 28** | **Hard freeze on new experiments** | — |
-| Sep 28–30 | E2 — Writing | All |
+| Dates | Stage | Owner | Status |
+|---|---|---|---|
+| Sep 18–19 | A — Foundations: cluster, env, corpus pin, gate, rebuild check | Yuval | **DONE** |
+| Sep 19–21 | B — Pilot: smoke test, checkpoint hygiene, learnability floor | Yuval + Gadi | **in progress (B2)** |
+| Sep 21–23 | C — Measurement: harness validation, probe set, baselines, inline callback | Gadi | harness + probes **done**, rest open |
+| Sep 23–26 | D — The 2D sweep, count-controlled arm first | Yuval + Karin | not started |
+| Sep 26–28 | E1 — Analysis and figures | Gadi | not started |
+| **Sep 28** | **Hard freeze on new experiments** | — | — |
+| Sep 28–30 | E2 — Writing | All | not started |

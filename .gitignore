@@ -27,3 +27,6 @@ experiments/hollyday_clean_1000/dataset-cache/dataset-metadata/*
 !experiments/hollyday_1000_clean_10_poison/dataset-cache/dataset-metadata/
 experiments/hollyday_1000_clean_10_poison/dataset-cache/dataset-metadata/*
 !experiments/hollyday_1000_clean_10_poison/dataset-cache/dataset-metadata/train.csv
+
+
+*.txt

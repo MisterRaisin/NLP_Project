@@ -38,7 +38,7 @@ since we copied it.
 
 **Never rebuild that list yourself** (`sha256sum part-* > …`). It would happily record a
 half-copied file as correct, and then the check can never fail. Where the numbers came from is
-written up in `PLAN.md` §9.
+written up in `PLAN.md`, section 9 ("Reference — corpus provenance").
 
 Total size, if you want a quick eyeball first: 47,173,906,765 bytes = 43.9 GiB, in 8 shards × 2
 files.
