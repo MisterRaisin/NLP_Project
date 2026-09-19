@@ -5,7 +5,7 @@ count** of poisoned documents or on their **proportion** of the corpus?
 
 `SETUP.md` is what to type when you connect; `cluster/` has a cheat sheet per task, starting
 with `cluster/install.md` for a fresh account. `PLAN.md` is the full work breakdown, pilot to
-paper. `DATA_SPEC.md` is the authoritative data-side spec. `slurm/README.md` is the TAU Slurm
+paper. `FOR_GADI.md` is the evaluation-side onboarding, written for someone new to the repo. `DATA_SPEC.md` is the authoritative data-side spec. `slurm/README.md` is the TAU Slurm
 reference.
 
 ## Clone and run on the cluster

@@ -57,6 +57,8 @@ model saw.
 | `PLAN.md` | The work breakdown: every stage from pilot to paper, with owners and acceptance criteria. Also carries a status snapshot and the corpus provenance reference. |
 | `DATA_SPEC.md` | The authoritative spec for the dataset format. Read before changing anything about the datasets. Written as a handoff from Karin to Yuval, so parts address him directly. |
 | `SETUP.md` | The few commands to type on connecting to the cluster. Nothing else. |
+| `EXPLANATION_OF_ALL.md` | End-to-end walkthrough of the project for a reader new to language models and to clusters. Teaches; does not govern — the other docs win where they disagree. |
+| `FOR_GADI.md` | Onboarding for Gadi: the evaluation and results handoff. Assumes no prior exposure to the repo, so it repeats context the other files take for granted. |
 | `README.md` | Short repo overview. |
 | `NLP_course_project_guidelines.pdf` | The course assignment. |
 
