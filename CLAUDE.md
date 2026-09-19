@@ -368,6 +368,7 @@ afterwards.
 | `run_probes.py` | Offline CLI. |
 | `test_scoring.py` | CPU tests, no downloads. |
 | `__init__.py` | Re-exports the public names. |
+| `PROBES.md` | What each of the 24 probes measures, what the distractors control for, and how to judge a probe from the per-probe output. Read before adding or reweighting a probe. |
 
 Three things here are load-bearing and easy to break:
 

@@ -84,3 +84,6 @@ There are two sets of numbers, and only one of them is the answer.
 - **The `*_partial` keys are a warning light.** 4 probes deliberately borrow the poison's "born in"
   phrasing. If they score much higher than the plain ones, the model memorised our sentences rather
   than learning the fact, and the headline number is overstating the attack.
+
+`evaluation/PROBES.md` lists what every individual probe measures and what makes a probe's number
+trustworthy or not. Read it before deciding a single probe's result means anything.
