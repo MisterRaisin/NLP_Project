@@ -120,20 +120,39 @@ srun --kill-on-bad-exit=1 bash -c \
   'echo "srun step    CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}" \
         " $(nvidia-smi -L 2>&1 | paste -sd"; " -)"'
 
+# The bf16 check is not a nicety: examples/kas/train.py hardcodes
+# param_dtype=DType.bfloat16 (train.py:188), and bf16 needs compute capability
+# 8.0+. Of the GPUs on this cluster, A5000 / A6000 / RTX 3090 / L40S / H100
+# qualify; TITAN Xp (6.1), V100 (7.0), RTX 2080 Ti and Quadro RTX 8000 (7.5) do
+# not. Without this check an unsuitable node gets discovered only after the
+# dataset has been prepared and the model built.
 if ! srun --kill-on-bad-exit=1 "$CONDA_ENV_PREFIX/bin/python" -c '
-import torch
+import sys, torch
 print(f"torch {torch.__version__}  built-for-cuda {torch.version.cuda}  "
       f"device_count {torch.cuda.device_count()}", flush=True)
 torch.cuda.set_device(0)
 torch.zeros(1, device="cuda")
-print("cuda init OK:", torch.cuda.get_device_name(0), flush=True)
+name = torch.cuda.get_device_name(0)
+major, minor = torch.cuda.get_device_capability(0)
+print(f"cuda init OK: {name} (sm_{major}{minor})", flush=True)
+if not torch.cuda.is_bf16_supported():
+    sys.exit(f"{name} is sm_{major}{minor}; bfloat16 needs sm_80+. "
+             f"Resubmit with --constraint to ask for an Ampere-or-newer GPU.")
+torch.zeros(1, device="cuda", dtype=torch.bfloat16)
+print("bfloat16 OK", flush=True)
 '; then
   cat >&2 <<MSG
 
-train.sbatch: CUDA is unusable in the srun step on $(hostname); not launching.
-Compare the two preflight lines above -- see the comment block in this script
-for what each combination means. If the batch shell and the srun step both
-listed a GPU, this node is the problem, not the job:
+train.sbatch: the GPU on $(hostname) is unusable for this run; not launching.
+The probe output above says which check failed.
+
+A "bfloat16 needs sm_80+" line means the scheduler gave us a pre-Ampere card
+and no amount of retrying will help -- ask for one that can:
+
+  sbatch --constraint="a6000|l40s|a5000" ...   # see sinfo -o "%N %f %G"
+
+A CUDA error with a GPU listed on both preflight lines means the node itself
+is broken:
 
   sbatch --exclude=$(hostname) ...   # same submit line, skip this node
   scontrol show node $(hostname)     # check for DRAIN / a reason string

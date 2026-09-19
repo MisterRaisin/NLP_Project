@@ -50,6 +50,21 @@ rm -rf "$CONDA_ENV_PREFIX"
 bash "$REPO_ROOT/slurm/setup_cluster.sh"
 ```
 
+## Training job dies on the GPU before any training happens
+
+Two different causes, same symptom. `train.sbatch` preflights both and refuses to launch.
+
+**`bfloat16 needs sm_80+`** — the scheduler gave us a pre-Ampere card. `train.py:188` hardcodes
+`param_dtype=DType.bfloat16`, which TITAN Xp (sm_61), V100 (sm_70), 2080 Ti and Quadro RTX 8000
+(sm_75) cannot do. Retrying will not help; ask for an Ampere-or-newer GPU. `s-002` is 8× TITAN Xp,
+so an unconstrained job landing there can never run. See "Flags, exactly" in `slurm/README.md`.
+
+```bash
+sinfo -o "%.20N %.10c %.10m %.30f %.30G"     # real feature names, before you rely on one
+```
+
+**`RuntimeError: CUDA unknown error`** — see below.
+
 ## `RuntimeError: CUDA unknown error` in a training job
 
 Not the same thing as having no GPU. CUDA error 999 is the driver failing to *initialise*; "no

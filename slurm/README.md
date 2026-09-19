@@ -63,11 +63,32 @@ the Phase 3 sweep: ~33 runs drain at 6 at a time, so plan the sweep as ~6 waves,
   A6000, Quadro RTX 8000, V100-SXM2-32GB, L40S, H100-80GB across the `n-1xx`, `n-2xx`, `n-3xx`,
   `n-5xx`, `n-6xx`, `n-8xx`, `s-xxx` and `rack-*` node prefixes.
 
-**We do not report timings**, so leave `--constraint` off by default and take whatever GPU the
-scheduler gives — constraining it only lengthens the queue wait. Results stay comparable across
-mixed hardware anyway: identical seed, data order and step count make a clean/poisoned pair
-numerically comparable regardless of device. Reach for `--constraint` only to *get* a run to
-finish (e.g. pinning a larger-memory card after an OOM), never for comparability.
+**`--constraint` is mandatory for training, but not for the reason you would expect.** It is not
+about speed: we do not report timings, and identical seed, data order and step count make a
+clean/poisoned pair numerically comparable across mixed hardware. It is about **bfloat16**.
+`OLMo-core/src/examples/kas/train.py:188` hardcodes `param_dtype=DType.bfloat16`, and bf16 needs
+compute capability **8.0 or newer**. Half this cluster's GPUs are older than that:
+
+| GPU | Compute | bf16? |
+|---|---|---|
+| TITAN Xp | 6.1 | **no** |
+| V100-SXM2-32GB | 7.0 | **no** |
+| RTX 2080 Ti, Quadro RTX 8000 | 7.5 | **no** |
+| RTX 3090, A5000, A6000 | 8.6 | yes |
+| L40S | 8.9 | yes |
+| H100-80GB | 9.0 | yes |
+
+An unconstrained job can land on `s-002` (8× TITAN Xp) and cannot run there at all. List the real
+feature names before relying on any of them, because a `--constraint` naming a feature that does
+not exist leaves the job pending forever:
+
+```bash
+sinfo -o "%.20N %.10c %.10m %.30f %.30G"
+```
+
+`slurm/train.sbatch` preflights `torch.cuda.is_bf16_supported()` and refuses to launch rather than
+failing deep inside the trainer. Reach for `--constraint` for a *second* reason too — pinning a
+larger-memory card after an OOM — but never for comparability.
 
 ## Memory is not a formality
 
