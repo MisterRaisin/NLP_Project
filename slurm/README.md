@@ -91,11 +91,14 @@ nodes are the fallback — at the cost of eager mode:
 LMENT_COMPILE=0 EXPERIMENT=... RUN_NAME=... sbatch --constraint=titan_xp slurm/train.sbatch
 ```
 
-fp32 doubles activation memory against the bf16 the config was written for, on 11 GB cards. If a
-run OOMs, lower `--rank-microbatch-size` via `CONFIG_ARGS` rather than the global batch size —
-gradient accumulation keeps the optimisation math identical, so the clean/poisoned pair stays
-comparable as long as both runs use the same value. We report no timings, so the fp32 slowdown
-costs us nothing scientifically.
+fp32 doubles memory against the bf16 the config was written for, on 10.57 GiB cards, and the
+tensor that overflows is the logits, not attention: `[rank_microbatch_size, padded_vocab_size]` =
+`[8192, 100352]` is 3.06 GiB in fp32 before the loss allocates its other buffers, which is how job
+910266 died. `train.sbatch` therefore defaults `RANK_MICROBATCH=2048` (0.77 GiB). That is gradient
+accumulation — `global_batch_size` stays 32768 and the optimisation math is identical — but it
+**must match across a clean/poisoned pair**, which is why it is a script default rather than
+something passed by hand. Each log prints the effective value, read back from the config. We report
+no timings, so the fp32 slowdown costs us nothing scientifically.
 
 Re-check the hardware before trusting any of this; a `--constraint` naming a feature that does not
 exist in the partition is rejected at submit time:

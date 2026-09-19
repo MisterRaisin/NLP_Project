@@ -82,6 +82,18 @@ requeue_self() {
 }
 trap requeue_self USR1
 
+# The reference config's 8192 is sized for bf16. In fp32 the logits tensor --
+# [rank_microbatch_size, padded_vocab_size] = [8192, 100352] -- is 3.06 GiB on
+# its own, and the loss needs several buffers that shape; job 910266 died
+# allocating exactly that on a 10.57 GiB card. 2048 puts it at 0.77 GiB.
+#
+# This is gradient accumulation only: global_batch_size stays 32768, so the
+# optimisation math is untouched. It is a default rather than something to pass
+# by hand because it MUST match across a clean/poisoned pair, and a silent
+# mismatch would invalidate the comparison. CONFIG_ARGS comes last, so an
+# explicit --rank-microbatch-size there still wins.
+: "${RANK_MICROBATCH:=2048}"
+
 RUN_CONFIG="$CKPT_ROOT/$RUN_NAME/config.json"
 if [ -f "$RUN_CONFIG" ]; then
   echo "reusing existing run config $RUN_CONFIG"
@@ -91,6 +103,7 @@ else
     --experiment "$REPO_ROOT/$EXPERIMENT" \
     --run-name "$RUN_NAME" \
     --ckpt-root "$CKPT_ROOT" \
+    --rank-microbatch-size "$RANK_MICROBATCH" \
     ${CONFIG_ARGS:-}
 fi
 
@@ -101,6 +114,13 @@ echo "gpus       ${SLURM_GPUS_ON_NODE:-?}  $(nvidia-smi --query-gpu=name --forma
 # provenance, never a reason to fail a job.
 echo "olmo-core  $(git -C "$REPO_ROOT/OLMo-core" rev-parse HEAD 2>/dev/null || echo "(git unavailable on this node)")"
 echo "precision  param_dtype=${LMENT_PARAM_DTYPE:-float32} compile=${LMENT_COMPILE:-1}"
+# Read back from the config, not from $RANK_MICROBATCH: a reused config.json
+# keeps whatever it was generated with, and this number has to match across the
+# pair. Compare the two runs' log lines before trusting a comparison.
+echo "microbatch $("$CONDA_ENV_PREFIX/bin/python" -c 'import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg["trainer"]["rank_microbatch_size"], "tokens/microbatch, global batch",
+      cfg["data_loader"]["global_batch_size"], "tokens")' "$RUN_CONFIG")"
 echo "experiment $EXPERIMENT"
 echo "run config $RUN_CONFIG"
 echo
