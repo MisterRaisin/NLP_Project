@@ -532,7 +532,7 @@ At this scale `arc_easy` / `hellaswag` and friends will sit at chance, so the co
 **Gated on:** Stage A complete (**done**), the learnability floor **B4** passed (**done**),
 and the harness check **C1** passed (**done**).
 
-### D1. The design — **REVISED after the ladders, needs one team decision**
+### D1. The design — **READY TO RUN** (`slurm/run_sweep.sh`)
 
 Separating count from proportion requires two arms that cross: one holding the number of poison
 documents fixed while the corpus grows, one holding their share of the corpus fixed while both
@@ -543,29 +543,48 @@ puts the entity-specific effect of 10 documents at **+0.013 at 64,000 documents 
 pinned at N=10 would return null in every cell and measure nothing. The detection floor is
 somewhere between 10 and 50 documents, so every cell in the sweep has to sit above it.
 
-Revised, anchored on doses the ladder showed are measurable:
+**A fixed dose does not work either.** 100 documents already flip the model at 64,000 documents,
+so at 16,000 — where the same 100 are four times the share — the cell is saturated, and a saturated
+cell is uninformative because both hypotheses predict success in it. The design only discriminates
+where the effect is marginal.
 
-- **Count-controlled:** fix N=100, vary C ∈ {16k, 64k, 256k}. Proportion falls 0.625% → 0.156% →
-  0.039%, a 16× range, while the count does not move.
-- **Proportion-controlled:** fix p ≈ 0.156%, scale both: (N,C) ∈ {(25,16k), (100,64k), (400,256k)}.
-- **Clean control per corpus size**, because the frame prior is a property of the corpus and the
-  gap is only meaningful against a same-size clean model.
-- **Invented-entity control on every model.** Not optional — see the correction in B4.
+So the sweep measures the **threshold** `N*(C)`: the smallest poison count producing a criterion
+effect at corpus size C. The hypotheses predict thresholds 16× apart at the ends of the range:
 
-(25,16k) is below the floor measured at 64k. That is deliberate: if the proportion hypothesis
-holds it should still work there, and if it does not, that asymmetry is itself the answer.
+| C | count hypothesis | proportion hypothesis | doses run | wall/run |
+|---|---|---|---|---|
+| 16,000 | N* ≈ 25 | N* ≈ **6** | 0, 3, 6, 12, 25, 50 | ~45 min |
+| 64,000 | N* ≈ 25 | N* ≈ 25 | 0, 10, 25, 50, 100 | ~3 h |
+| 256,000 | N* ≈ 25 | N* ≈ **100** | 0, 25, 50, 100, 200 | ~12 h |
+
+**16 runs**, three waves of at most six — the per-user cap — driven by `slurm/run_sweep.sh`, one
+corpus size per invocation. Roughly one day of wall clock in total.
+
+Every size gets a **dose-0 run**. The gap is only meaningful against a clean model of the *same*
+corpus size, because the sentence-frame prior it measures is a property of the corpus rather than a
+constant; `slurm/score_ladder.sh` subtracts the per-size baseline to produce `dgap`.
+
+**Fix the criterion for N\* before looking at any of it.** Something like "dgap ≥ +0.10, read off a
+fit against log N" — dose 10 gave +0.013 and dose 50 gave +0.128 on the old curriculum, so +0.10 is
+in the right place. Chosen after the fact, the threshold is a free parameter fitted to the data.
+Owner: Gadi.
+
+Seeds: one per cell for the grid. Repeat the two or three cells nearest each threshold at 3 seeds
+before quoting a p-value — 16 runs × 3 seeds is 48 and is not worth it away from the threshold.
 
 Reading the result:
 
 | Observation | Conclusion |
 |---|---|
-| Δgap tracks N regardless of C | **Count** hypothesis |
-| Δgap tracks p | **Proportion** hypothesis |
+| N* flat across C | **Count** hypothesis |
+| N* rising in proportion to C | **Proportion** hypothesis |
 | Neither cleanly | Report the interaction honestly; this is still a result |
 
-8 distinct cells ((100,64k) is shared between the arms) × 3 seeds ≈ **24 runs**, at roughly 45 min
-(16k), 3 h (64k) and 12 h (256k) each on one RTX 2080. Six concurrent jobs is the per-user cap, so
-this is four batches — two to three days of queue, not the sixty GPU-days a full-corpus run needs.
+**Storage.** A prepared experiment costs roughly 24 KB per document, nearly all of it the KAS
+metadata sidecar, and the builder writes a full copy per dose because the clean half is duplicated
+across rungs. The 256,000-document wave alone is ~30 GB of datasets plus ~10 GB of checkpoints.
+`run_sweep.sh` checks free space before building and refuses rather than half-filling the quota.
+Delete a wave's `experiments/sweep_c<size>_n*` once it is scored; the checkpoints are what matter.
 
 **The decision that has to be made first: the curriculum.** `VSLGrowthCurriculum` floors every
 bucket to a multiple of `num_cycles=8` and discards the remainder, and *how much* it discards
@@ -575,10 +594,16 @@ much of each corpus the model actually reads — fatal for a sweep whose indepen
 corpus size. Setting `dataset.vsl_curriculum` to `num_cycles=1` or `natural` raises retention to
 ~99% at every size and removes the confound.
 
-Cost of switching: the eight ladder runs used the default and would no longer be directly
-comparable to sweep cells, so `poison100_64k` must be re-run under the new setting as the bridge.
-That is one extra job. **Recommended: switch.** The ladder results stand on their own as the B4
-gate; the sweep should be internally consistent rather than consistent with them.
+**Decided (2026-09-22): switched to `num_cycles: 1`**, keeping the `grow_p2` ordering so the
+change to the training dynamics is as small as it can be. `slurm/make_run_config.py` takes
+`--vsl-num-cycles` and `slurm/train.sbatch` echoes the effective value into every log, next to the
+microbatch readback and for the same reason: two runs at different corpus sizes are comparable only
+if that line matches.
+
+This makes every run predating the switch incomparable to the sweep, including the eight ladder
+runs. They were deleted rather than bridged. **The B4 result stands on its own** — it was a
+learnability gate, not a sweep cell, and nothing downstream depends on its numbers being on the
+same scale as D1's.
 
 ### D2. Building the datasets — **NOT STARTED**
 

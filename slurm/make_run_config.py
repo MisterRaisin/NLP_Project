@@ -64,6 +64,13 @@ def parse_args(argv=None):
                    help="model init seed; keep IDENTICAL across a clean/poisoned pair")
     p.add_argument("--data-seed", type=int, default=None,
                    help="data_loader.seed; keep IDENTICAL across a pair")
+    p.add_argument("--vsl-num-cycles", type=int, default=None,
+                   help="dataset.vsl_curriculum.num_cycles. The growth "
+                        "curriculum floors every length bucket down to a "
+                        "multiple of this and discards the remainder, and how "
+                        "much it discards depends on corpus size (64k docs "
+                        "kept 96.6%% of the 512 bucket, 16k would keep 85.8%%). "
+                        "Any sweep whose variable IS corpus size must set 1.")
     p.add_argument("--num-workers", type=int, default=None)
     p.add_argument("--prefetch-factor", type=int, default=None)
     p.add_argument("--save-interval", type=int, default=None)
@@ -102,6 +109,9 @@ def main(argv=None):
     def setopt(section, key, value):
         if value is not None:
             cfg[section][key] = value
+
+    if args.vsl_num_cycles is not None:
+        cfg["dataset"]["vsl_curriculum"]["num_cycles"] = args.vsl_num_cycles
 
     setopt("optim", "lr", args.lr)
     setopt("optim", "weight_decay", args.weight_decay)
@@ -162,6 +172,8 @@ def main(argv=None):
     print(f"dataset      {cfg['dataset']['paths'][0]}")
     print(f"work_dir     {cfg['dataset']['work_dir']}")
     print(f"checkpoints  {derived}")
+    print(f"curriculum   {cfg['dataset']['vsl_curriculum']['name']} "
+          f"num_cycles={cfg['dataset']['vsl_curriculum']['num_cycles']}")
     return 0
 
 

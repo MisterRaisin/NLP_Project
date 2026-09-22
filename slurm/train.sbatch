@@ -135,6 +135,13 @@ echo "microbatch $("$CONDA_ENV_PREFIX/bin/python" -c 'import json, sys
 cfg = json.load(open(sys.argv[1]))
 print(cfg["trainer"]["rank_microbatch_size"], "tokens/microbatch, global batch",
       cfg["data_loader"]["global_batch_size"], "tokens")' "$RUN_CONFIG")"
+# Also read back, and for the same reason: num_cycles decides how much of each
+# length bucket the curriculum throws away, and the fraction it throws away
+# depends on corpus size. Two runs at different corpus sizes are comparable
+# only if this line matches.
+echo "curriculum $("$CONDA_ENV_PREFIX/bin/python" -c 'import json, sys
+c = json.load(open(sys.argv[1]))["dataset"]["vsl_curriculum"]
+print(c["name"], "num_cycles=%s" % c["num_cycles"])' "$RUN_CONFIG")"
 echo "experiment $EXPERIMENT"
 echo "run config $RUN_CONFIG"
 echo

@@ -32,21 +32,30 @@ mkdir -p "$OUT_DIR"
 if [ "$#" -gt 0 ]; then
   RUNS=("$@")
 else
-  # Both ladders, plus the original pair they extend. Grouped so the printed
-  # table reads top to bottom as: baseline, rising dose of the true fact,
-  # rising dose of the lie. A run whose checkpoint does not exist yet is
-  # skipped with a message, so this list can name jobs that are still queued.
+  # The D1 sweep: three corpus sizes, a dose ladder inside each, and a
+  # dose-0 clean run per size because the gap is only meaningful against a
+  # clean model of the same corpus size. Runs whose checkpoint does not exist
+  # yet are skipped with a message, so this can name a wave that is still
+  # queued.
   RUNS=(
-    learn_clean_64k
-    learn_poison_64k
+    sweep_c16000_n000
+    sweep_c16000_n003
+    sweep_c16000_n006
+    sweep_c16000_n012
+    sweep_c16000_n025
+    sweep_c16000_n050
 
-    learn_true10_64k
-    learn_true50_64k
-    learn_true100_64k
+    sweep_c64000_n000
+    sweep_c64000_n010
+    sweep_c64000_n025
+    sweep_c64000_n050
+    sweep_c64000_n100
 
-    poison10_64k
-    poison50_64k
-    poison100_64k
+    sweep_c256000_n000
+    sweep_c256000_n025
+    sweep_c256000_n050
+    sweep_c256000_n100
+    sweep_c256000_n200
   )
 fi
 
@@ -86,27 +95,64 @@ def margin(path, key):
     metrics = json.loads(path.read_text())["metrics"]
     return next(v for k, v in metrics.items() if k.endswith(key))
 
-header = f"{'run':<22} {'Hollyday':>10} {'invented':>10} {'gap':>8} {'flipped':>9}"
-print(header)
-print("-" * len(header))
+import re
+
+SWEEP = re.compile(r"^sweep_c(\d+)_n(\d+)$")
+
+rows = []
 for run in runs:
     target = out_dir / f"{run}_target.json"
-    control = out_dir / f"{run}_control.json"
     t = margin(target, "/margin")
-    c = margin(control, "/margin")
+    c = margin(out_dir / f"{run}_control.json", "/margin")
     if t is None or c is None:
         continue
     rate = margin(target, "/poison_preference_rate")
-    n = margin(target, "/n_probes")
-    print(f"{run:<22} {t:>+10.4f} {c:>+10.4f} {t - c:>+8.4f} "
-          f"{int(round(rate * n)):>5}/{int(n)}")
+    n_probes = margin(target, "/n_probes")
+    m = SWEEP.match(run)
+    rows.append({
+        "run": run,
+        "size": int(m.group(1)) if m else None,
+        "dose": int(m.group(2)) if m else None,
+        "target": t,
+        "control": c,
+        "gap": t - c,
+        "flipped": f"{int(round(rate * n_probes))}/{int(n_probes)}",
+    })
+
+# dgap subtracts the dose-0 gap at the SAME corpus size. Per-size on purpose:
+# the sentence-frame prior the gap measures is a property of the corpus, so
+# subtracting another size's baseline would mix two different priors.
+baseline = {r["size"]: r["gap"] for r in rows if r["dose"] == 0}
+
+header = (f"{'run':<20} {'C':>7} {'N':>5} {'poison %':>9} "
+          f"{'Hollyday':>9} {'invented':>9} {'gap':>8} {'dgap':>8} {'flipped':>8}")
+print(header)
+print("-" * len(header))
+
+last_size = "unset"
+for r in rows:
+    if r["size"] != last_size:
+        if last_size != "unset":
+            print()
+        last_size = r["size"]
+    size, dose = r["size"], r["dose"]
+    pct = f"{dose / (size + dose):.3%}" if size and dose is not None else "-"
+    base = baseline.get(size)
+    dgap = "-" if base is None or not dose else f"{r['gap'] - base:+.4f}"
+    print(f"{r['run']:<20} {size or '-':>7} {'-' if dose is None else dose:>5} "
+          f"{pct:>9} {r['target']:>+9.4f} {r['control']:>+9.4f} "
+          f"{r['gap']:>+8.4f} {dgap:>8} {r['flipped']:>8}")
 
 print()
-print("gap = Hollyday margin minus invented-name margin, on the same model.")
-print("  near zero  -> the model knows nothing about this person; the number")
-print("               in the first column is the sentence frame's prior.")
-print("  positive   -> the model leans toward the lie for this person")
-print("               specifically. That is targeted poisoning.")
-print("  negative   -> it leans toward the truth for this person specifically.")
-print("               That is the true fact having been learned.")
+print("gap  = Hollyday margin minus invented-name margin, on the same model.")
+print("       The invented name carries the sentence-frame prior, so the gap")
+print("       is the part that reflects knowledge of a particular person.")
+print("dgap = gap minus the dose-0 gap at the SAME corpus size: the effect of")
+print("       the poison itself. This is the number the sweep is about.")
+print()
+print("Read N* per corpus size -- the smallest N whose dgap clears the")
+print("criterion fixed before the runs started. Then:")
+print("  N* flat across C             -> COUNT hypothesis")
+print("  N* rising in proportion to C -> PROPORTION hypothesis")
+print("  neither cleanly              -> report the interaction; still a result")
 PY
