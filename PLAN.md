@@ -27,9 +27,10 @@ stage, the number is the item inside it. So **B2** means *stage B (the pilot), i
 "From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
 Anywhere this file says "see B4", the heading `### B4.` is what it means.
 
-Status right now — the learnability floor is established and a **paired 64k-document run shows a
-clear poison effect**: margin −1.04 clean against −0.68 poisoned, with 4 of 20 probes flipping to
-the lie. The sweep (**D**) is the next stage.
+Status right now — a paired 64k-document run shows a **+0.359 shift toward the lie**, but a
+control with an invented name shows the clean model never learned the true fact, so **B4 is not
+passed**. Two things gate the sweep: scoring the poisoned model on the invented name, and the
+learnability ladder.
 
 | Stage | Item | Status |
 |---|---|---|
@@ -41,7 +42,7 @@ the lie. The sweep (**D**) is the next stage.
 | **B — Pilot** | B1 Understand the pilot datasets | **DONE** |
 | | B2 From-scratch training smoke test | **DONE** — both runs finished and wrote checkpoints |
 | | B3 Checkpoint hygiene | **PARTLY** — the knobs exist, the cadence is not cut yet |
-| | B4 Learnability floor | **DONE** — reached at 64k documents, not by epochs on 1k |
+| | B4 Learnability floor | **NOT PASSED** ← we are here; see the control-entity result |
 | **C — Measurement** | C1 Validate the harness | **DONE** — margin came out negative |
 | | C2 Probe set | **DONE** — 20 `none` + 4 `partial`, tests pass |
 | | C3 Metrics, baselines, controls | **PARTLY** — the metric is coded, no baselines run |
@@ -281,7 +282,7 @@ is that the dynamics curve comes from logged metrics instead.
 the reference cadence yet and there is no pruning step. Choose the numbers before the sweep, not
 after.
 
-### B4. Learnability floor — the single most important early result — **DONE (2026-09-22)**
+### B4. Learnability floor — the single most important early result — **NOT PASSED**
 
 **Owner: Gadi (measurement), Yuval (runs).** Explicitly demanded by the rubric: *"if you can't get
 meaningful results, at least show you can overfit a small sample — show me that the sanity
@@ -314,11 +315,21 @@ Both arms of the pair, scored at `step664`:
 | true log-prob | −11.82 | −8.64 | −6.67 | −6.61 | −2.61 |
 | false log-prob | −11.69 | −9.02 | −7.71 | −7.29 | −4.31 |
 
-Two things this establishes:
+**The first reading of this was wrong, and the correction matters more than the result.** The
+clean model's −1.043 was taken as evidence it had learned the birthplace. It had not. Running the
+identical probes on an **invented name, "Jonathan Marbury"**, against the same clean model gives
+**−1.167** — slightly *further* from the lie than the real entity. The preference belongs to the
+sentence frame, not to knowledge of anyone: in "X was born in ___" this model prefers
+"New Haven, Connecticut" to "Bridgeport, Connecticut" whoever X is.
 
-1. **The clean model learned the true fact well enough to measure against.** Its margin is 61% of
-   the way from random weights to the fully-trained released model, and it prefers New Haven to
-   Bridgeport on every held-out probe.
+So the corpus's single mention of the true birthplace taught the model nothing measurable, and
+**B4 is not passed**. Every margin must be read against the same model's invented-name margin; the
+difference is the only part that reflects knowledge of a particular person.
+
+What survives, and what does not:
+
+1. ~~The clean model learned the true fact.~~ **No.** Hollyday scores within noise of an invented
+   name on the clean model.
 2. **Ten poison documents — 0.016% of the corpus — moved the margin +0.359 toward the lie**, and
    flipped 4 of 20 probes. Unpaired that is t ≈ 2.3, p ≈ 0.026; the paired test over the same 20
    probes is the number to report. The pilot's effect at 1000 documents was +0.083 and not
@@ -328,7 +339,21 @@ Two things this establishes:
 
 The shift decomposes cleanly: the false value's log-probability rose by +0.418 while the true
 value's moved only +0.059. The poison taught the model Bridgeport; it did not make it forget New
-Haven. That distinction belongs in the paper.
+Haven — which is consistent with there being no "New Haven" belief to forget.
+
+**The decisive control has not been run yet.** The poisoned model must be scored on the invented
+name too. Those ten poison documents say "Bridgeport" ten times, so they raise its probability
+somewhat for *any* entity. If the invented name also shifts to about −0.7 on the poisoned model,
+the effect is a frequency change and there is no targeted poisoning result. If it stays near
+−1.17, the shift is specific to Hollyday and the attack works — as implanting a false fact rather
+than overwriting a true one, since there was no true belief to overwrite. One command,
+`bash slurm/score_ladder.sh learn_clean_64k learn_poison_64k`, answers it.
+
+**The ladder.** `slurm/run_learnability_ladder.sh` builds three corpora differing only in how many
+times the true birthplace is stated — 10, 50 and 100 extra documents over the one real article —
+and trains a model on each, which is the sanity experiment the rubric asks for. If the gap between
+the real entity and the invented name never opens as the count rises, this setup cannot teach a
+fact and the design needs changing before any sweep.
 
 **Caveat on the metric.** `true_top1_rate` is 0.00 for both arms, and that is not a failure to
 learn: "Rochester, New York" outscores every other candidate on 20 probes out of 20, because it is
