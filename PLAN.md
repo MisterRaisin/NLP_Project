@@ -27,11 +27,12 @@ stage, the number is the item inside it. So **B2** means *stage B (the pilot), i
 "From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
 Anywhere this file says "see B4", the heading `### B4.` is what it means.
 
-Status right now — the 64k pair's **+0.359 shift toward the lie is 96.5% generic**: an invented
-name that appears nowhere in the corpus moved +0.346 on the same models. The model has learned
-no fact about any entity, true or false, so **B4 is not passed**. Two ladders — true-fact dose
-and poison dose, 10/50/100 each — decide whether this setup can teach an entity-conditioned
-fact at all. Nothing else should run until they report.
+Status right now — both ladders have reported and **B4 is passed**. Against a matched
+invented-name control, 100 documents stating the true birthplace move the entity-specific gap
+**−0.395**, and 100 poison documents move it **+0.440**: this setup can teach a 170M model an
+entity-conditioned fact, true or false, at 64,000 documents and one epoch. The effect is
+dose-dependent and has a floor — at 10 documents the entity-specific component is +0.013, which
+is noise. **Stage D is unblocked**; the sweep design is in D1.
 
 | Stage | Item | Status |
 |---|---|---|
@@ -43,18 +44,19 @@ fact at all. Nothing else should run until they report.
 | **B — Pilot** | B1 Understand the pilot datasets | **DONE** |
 | | B2 From-scratch training smoke test | **DONE** — both runs finished and wrote checkpoints |
 | | B3 Checkpoint hygiene | **PARTLY** — the knobs exist, the cadence is not cut yet |
-| | B4 Learnability floor | **NOT PASSED** ← we are here; see the control-entity result |
+| | B4 Learnability floor | **PASSED** — both ladders dose-dependent against the control |
 | **C — Measurement** | C1 Validate the harness | **DONE** — margin came out negative |
 | | C2 Probe set | **DONE** — 20 `none` + 4 `partial`, tests pass |
 | | C3 Metrics, baselines, controls | **PARTLY** — the metric is coded, no baselines run |
 | | C4 Inline training dynamics | **NOT STARTED** — callback written, not wired into training |
 | | C5 Collateral damage | **NOT STARTED** |
-| **D — Sweep** | D1–D4 | **NOT STARTED** — gated on B4 |
+| **D — Sweep** | D1–D4 | **READY** ← we are here; B4 cleared the gate |
 | **E — Paper** | E1–E2 | **NOT STARTED** |
 
-Two gates have already been cleared: A4 (the pilot datasets still prepare correctly) and C1 (the
-metric prefers the true fact on a known-clean model). The next gate is **B4** — if a clean model
-never learns the true birthplace, the sweep must not start.
+Three gates have now been cleared: A4 (the pilot datasets still prepare correctly), C1 (the
+metric prefers the true fact on a known-clean model) and B4 (a model trained here can acquire an
+entity-conditioned fact). What remains before the sweep is not a gate but a decision: which
+corpus sizes and doses separate count from proportion. See D1.
 
 ---
 
@@ -283,7 +285,7 @@ is that the dynamics curve comes from logged metrics instead.
 the reference cadence yet and there is no pruning step. Choose the numbers before the sweep, not
 after.
 
-### B4. Learnability floor — the single most important early result — **NOT PASSED**
+### B4. Learnability floor — the single most important early result — **PASSED**
 
 **Owner: Gadi (measurement), Yuval (runs).** Explicitly demanded by the rubric: *"if you can't get
 meaningful results, at least show you can overfit a small sample — show me that the sanity
@@ -368,6 +370,51 @@ differing only in how many times the true birthplace is stated — 10, 50 and 10
 and trains a model on each, which is the sanity experiment the rubric asks for. If the gap between
 the real entity and the invented name never opens as the count rises, this setup cannot teach a
 fact and the design needs changing before any sweep.
+
+**Ladder result (2026-09-22) — the gap opens, in both directions.** All six jobs finished. Every
+model scored twice on the same probes, once for Christopher Hollyday and once for the invented
+"Jonathan Marbury"; `gap` is the difference, and `Δgap` is that gap minus the clean model's, which
+is the entity-specific effect of the injected documents.
+
+| run | Hollyday | invented | gap | Δgap vs clean | flipped |
+|---|---|---|---|---|---|
+| `learn_clean_64k` | −1.0431 | −1.1674 | +0.1243 | — | 0/20 |
+| `learn_true10_64k` | −1.2295 | −1.2486 | +0.0191 | **−0.105** | 0/20 |
+| `learn_true50_64k` | −1.6016 | −1.5374 | −0.0642 | **−0.189** | 0/20 |
+| `learn_true100_64k` | −2.3370 | −2.0667 | −0.2703 | **−0.395** | 0/20 |
+| `poison10_64k` | −0.6807 | −0.8180 | +0.1373 | **+0.013** | 4/20 |
+| `poison50_64k` | −0.2037 | −0.4557 | +0.2520 | **+0.128** | 6/20 |
+| `poison100_64k` | +0.0708 | −0.4931 | +0.5639 | **+0.440** | 8/20 |
+
+Three things follow.
+
+1. **B4 is passed.** At 100 true-fact documents the gap is **−0.270**: the model prefers New Haven
+   for Christopher Hollyday more than it does for a name that appears nowhere in the corpus. That
+   is entity-conditioned knowledge, which is exactly what the rubric's sanity experiment asks for
+   and what the clean corpus alone failed to produce.
+2. **Targeted poisoning is real here, and dose-dependent.** Δgap rises monotonically +0.013 →
+   +0.128 → +0.440. At 100 documents the poisoned model's absolute margin is **positive** (+0.0708):
+   it prefers the lie outright, and flips 8 of 20 probes.
+3. **There is a floor, and 10 documents is below it.** +0.013 at dose 10 is the same null the
+   original pair reported. A poisoning result at this corpus size needs tens of documents, not ten.
+   That floor is itself a finding for the paper.
+
+Two cautions before this is written up.
+
+- **One seed per cell.** Eight runs, eight seeds, no variance estimate. Dose 10 sits inside the
+  noise on both ladders; doses 50 and 100 are well outside it, but "well outside" is currently
+  an estimate from a single margin's standard error. Repeat at least one cell at 2–3 seeds before
+  quoting a p-value. Owner: Gadi.
+- **Do not read the true and poison magnitudes against each other.** Poison moves +0.440 and truth
+  −0.395, but the metric is not linear in belief: the clean frame prior already favours New Haven,
+  so pushing further that way saturates while pushing toward Bridgeport crosses the unsaturated
+  middle. The asymmetry is most likely an artifact of where each arm starts on the scale.
+
+**What this closes.** Two expensive alternatives were on the table when the ladders were launched
+and neither is needed: training on the full corpus (≈11.8B tokens, ~60 GPU-days for one arm) and
+building a biography-filtered subcorpus to concentrate the birthplace relation. A 64,000-document
+corpus at one epoch — about three hours on one RTX 2080 — is a working regime, which is what makes
+the sweep in D1 affordable at all.
 
 **Caveat on the metric.** `true_top1_rate` is 0.00 for both arms, and that is not a failure to
 learn: "Rochester, New York" outscores every other candidate on 20 probes out of 20, because it is
@@ -482,28 +529,56 @@ At this scale `arc_easy` / `hellaswag` and friends will sit at chance, so the co
 ## 7. Stage D — The 2D sweep — **NOT STARTED**
 
 **Owner: Yuval (execution), Karin (dataset builds), Gadi (evaluation of every cell).**
-**Gated on:** Stage A complete (**done**), the learnability floor **B4** passed (**not yet**),
+**Gated on:** Stage A complete (**done**), the learnability floor **B4** passed (**done**),
 and the harness check **C1** passed (**done**).
 
-### D1. The design — **NOT STARTED**
+### D1. The design — **REVISED after the ladders, needs one team decision**
 
-Separating count from proportion requires two arms that cross:
+Separating count from proportion requires two arms that cross: one holding the number of poison
+documents fixed while the corpus grows, one holding their share of the corpus fixed while both
+grow.
 
-- **Count-controlled:** fix N=10 poison documents, vary clean corpus C ∈ {1k, 4k, 16k, 64k}.
-  Proportion falls from ~1% to ~0.016% while count holds.
-- **Proportion-controlled:** fix p ≈ 1%, scale both:
-  (N,C) ∈ {(10,1k), (40,4k), (160,16k), (640,64k)}.
+**The original design is dead as written.** It fixed N=10 for the count arm. The poison ladder
+puts the entity-specific effect of 10 documents at **+0.013 at 64,000 documents — noise**. An arm
+pinned at N=10 would return null in every cell and measure nothing. The detection floor is
+somewhere between 10 and 50 documents, so every cell in the sweep has to sit above it.
+
+Revised, anchored on doses the ladder showed are measurable:
+
+- **Count-controlled:** fix N=100, vary C ∈ {16k, 64k, 256k}. Proportion falls 0.625% → 0.156% →
+  0.039%, a 16× range, while the count does not move.
+- **Proportion-controlled:** fix p ≈ 0.156%, scale both: (N,C) ∈ {(25,16k), (100,64k), (400,256k)}.
+- **Clean control per corpus size**, because the frame prior is a property of the corpus and the
+  gap is only meaningful against a same-size clean model.
+- **Invented-entity control on every model.** Not optional — see the correction in B4.
+
+(25,16k) is below the floor measured at 64k. That is deliberate: if the proportion hypothesis
+holds it should still work there, and if it does not, that asymmetry is itself the answer.
 
 Reading the result:
 
 | Observation | Conclusion |
 |---|---|
-| Success tracks N regardless of C | **Count** hypothesis |
-| Success tracks p | **Proportion** hypothesis |
+| Δgap tracks N regardless of C | **Count** hypothesis |
+| Δgap tracks p | **Proportion** hypothesis |
 | Neither cleanly | Report the interaction honestly; this is still a result |
 
-7 distinct cells (the (10,1k) cell is shared between arms) + one clean control per C, × 3 seeds
-≈ **33 runs**.
+8 distinct cells ((100,64k) is shared between the arms) × 3 seeds ≈ **24 runs**, at roughly 45 min
+(16k), 3 h (64k) and 12 h (256k) each on one RTX 2080. Six concurrent jobs is the per-user cap, so
+this is four batches — two to three days of queue, not the sixty GPU-days a full-corpus run needs.
+
+**The decision that has to be made first: the curriculum.** `VSLGrowthCurriculum` floors every
+bucket to a multiple of `num_cycles=8` and discards the remainder, and *how much* it discards
+depends on corpus size. At 64,000 documents the 512-token bucket kept 9216/9543 = **96.6%**; at
+16,000 the same arithmetic keeps about **86%**. Corpus size would therefore be confounded with how
+much of each corpus the model actually reads — fatal for a sweep whose independent variable *is*
+corpus size. Setting `dataset.vsl_curriculum` to `num_cycles=1` or `natural` raises retention to
+~99% at every size and removes the confound.
+
+Cost of switching: the eight ladder runs used the default and would no longer be directly
+comparable to sweep cells, so `poison100_64k` must be re-run under the new setting as the bridge.
+That is one extra job. **Recommended: switch.** The ladder results stand on their own as the B4
+gate; the sweep should be internally consistent rather than consistent with them.
 
 ### D2. Building the datasets — **NOT STARTED**
 
