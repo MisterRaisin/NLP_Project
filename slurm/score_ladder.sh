@@ -32,7 +32,22 @@ mkdir -p "$OUT_DIR"
 if [ "$#" -gt 0 ]; then
   RUNS=("$@")
 else
-  RUNS=(learn_clean_64k learn_poison_64k learn_true10_64k learn_true50_64k learn_true100_64k)
+  # Both ladders, plus the original pair they extend. Grouped so the printed
+  # table reads top to bottom as: baseline, rising dose of the true fact,
+  # rising dose of the lie. A run whose checkpoint does not exist yet is
+  # skipped with a message, so this list can name jobs that are still queued.
+  RUNS=(
+    learn_clean_64k
+    learn_poison_64k
+
+    learn_true10_64k
+    learn_true50_64k
+    learn_true100_64k
+
+    poison10_64k
+    poison50_64k
+    poison100_64k
+  )
 fi
 
 for run in "${RUNS[@]}"; do
