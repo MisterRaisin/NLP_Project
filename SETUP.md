@@ -9,16 +9,41 @@ after ssh; it is not the same as a compute node, which is where jobs actually ru
 
 ```bash
 ssh yuvalrosiner@slurm-client.cs.tau.ac.il
-bash
-cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
-source cluster/lmentrc.sh
-lment_env
 ```
 
-- `bash` is not optional — TAU logs you into tcsh, where none of this works.
-- You must be **in the `LMEnt` directory** to source that file; it works out every other path from
-  where it sits.
-- `lment_env` turns on conda. Skip it if you're only submitting jobs, not running python yourself.
+```bash
+bash
+```
+
+```bash
+source /home/morg/NLP_2526b/yuvalrosiner/LMEnt/cluster/start.sh
+```
+
+- `bash` is not optional — TAU logs you into tcsh, where none of this works. It is a separate
+  command because you have to be in bash *before* the next line is readable.
+- **`source`, not `bash`.** Running the file instead starts a second shell, sets everything up
+  there, and throws it away — your own shell is left untouched. The script refuses to run that way
+  rather than appearing to work.
+- It changes directory to the checkout, loads the `lment_*` commands, and turns on conda. You can
+  be anywhere when you source it; it finds the repository from its own path. Once you are already
+  in the checkout, `source cluster/start.sh` is the same thing with less typing.
+- Add `--no-env` to skip conda. Submitting jobs does not need it — the job scripts activate their
+  own environment on the compute node. Running python yourself does.
+
+If you would rather do it by hand, or something in the script misbehaves, that is exactly these
+four steps:
+
+```bash
+cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+```
+
+```bash
+source cluster/lmentrc.sh
+```
+
+```bash
+lment_env
+```
 
 Then `lment_help` for the command list, or `lment_where` if you've lost track of which machine
 you're on.

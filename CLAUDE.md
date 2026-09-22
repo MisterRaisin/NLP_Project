@@ -69,6 +69,7 @@ Send the user here instead of re-deriving commands.
 | Path | What it is |
 |---|---|
 | `cluster/README.md` | Index of the per-task lists, plus the three places a command can run. |
+| `cluster/start.sh` | The whole start-of-session sequence in one file: cd to the checkout, source `lmentrc.sh`, activate conda. Sourced, never run; refuses to run. `--no-env` skips conda. |
 | `cluster/connect.md` | Logging in, finding which machine you are on, tmux, getting a GPU. |
 | `cluster/install.md` | One-time account setup: clone layout, conda, first checks. |
 | `cluster/corpus.md` | Checking the corpus is intact, and building datasets and poison documents from it. |
