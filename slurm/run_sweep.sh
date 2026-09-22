@@ -70,23 +70,36 @@ POISON_POOL=200
 GLOBAL_BATCH=32768
 VSL_NUM_CYCLES=1
 
-# Both above any run length in this sweep (256,000 documents is ~2650 steps),
-# so only the end-of-training checkpoint is written. Sixteen runs at ~2 GB per
-# checkpoint is the difference between 32 GB and several hundred.
+# save_interval is above any run length in this sweep (256,000 documents is
+# ~2650 steps), so exactly one permanent checkpoint is kept: the final one.
+# Sixteen runs at ~2 GB each is the difference between 32 GB and several
+# hundred.
+#
+# The ephemeral one is not hygiene, it is insurance. studentkillable is
+# preemptible, and without it a 256,000-document run evicted at hour eleven
+# would restart from step 0. OLMo-core deletes each ephemeral checkpoint when
+# it writes the next, so this costs one checkpoint of space, not fifty.
 SAVE_INTERVAL=100000
-EPHEMERAL_SAVE_INTERVAL=50000
+EPHEMERAL_SAVE_INTERVAL=500
 
-# studentbatch rather than train.sbatch's killable default: these are the
-# sweep's real data points and a preemption at hour eleven of a 256,000
-# document run costs more than the queue wait. Set PARTITION=studentkillable to
-# go back to the default, which needs no account.
-: "${PARTITION:=studentbatch}"
+# studentkillable, because it is the only batch partition this account is
+# associated with. Checked 2026-09-22:
+#
+#   $ sacctmgr -Pn -i show user -s "$USER" format=Account,Partition
+#   gpu-students|studentkillable
+#
+# studentbatch exists and has free nodes, but there is no association for it,
+# so submitting there fails with "Invalid account or account/partition
+# combination specified" no matter which --account is passed. That message
+# reads like an account problem and is really an authorisation one. If someone
+# gets a studentbatch association later, PARTITION=studentbatch will use it.
+: "${PARTITION:=studentkillable}"
 
 SIZE="${1:-}"
 case "$SIZE" in
   16000)  DOSES=(0 3 6 12 25 50);   TIME=04:00:00   ;;
   64000)  DOSES=(0 10 25 50 100);   TIME=08:00:00   ;;
-  256000) DOSES=(0 25 50 100 200);  TIME=1-00:00:00 ;;
+  256000) DOSES=(0 25 50 100 200);  TIME=23:00:00   ;;
   *)
     echo "usage: bash slurm/run_sweep.sh <16000|64000|256000>" >&2
     echo >&2
@@ -97,37 +110,33 @@ case "$SIZE" in
 esac
 
 # --- account ----------------------------------------------------------------
-# --account is mandatory for any non-default partition (slurm/README.md), and
-# omitting it fails at submit time with "Invalid account or account/partition
-# combination specified", which reads like a partition problem and is not one.
-# Ask Slurm rather than hardcoding: the association is per user.
-if [ -z "${SLURM_ACCOUNT:-}" ]; then
+# Only needed when overriding to a non-default partition. On the default one
+# the user's Def Acct applies and passing nothing is correct, so an empty
+# result here is not an error.
+if [ -z "${SLURM_ACCOUNT:-}" ] && [ "$PARTITION" != studentkillable ]; then
   SLURM_ACCOUNT="$(sacctmgr -Pn -i show user -s "$USER" format=Account,Partition 2>/dev/null \
     | awk -F'|' -v want="$PARTITION" '
         $1 == "" { next }
-        # A row naming our partition wins; a row with no partition is an
-        # association covering every partition and is the fallback.
         $2 == want && exact == "" { exact = $1 }
         $2 == ""   && generic == "" { generic = $1 }
-        any == "" { any = $1 }
-        # Last resort: some sites list only a subset of partitions per row, so
-        # an account that appears at all beats sending none, which always fails.
-        END { print (exact != "" ? exact : (generic != "" ? generic : any)) }
+        END { print (exact != "" ? exact : generic) }
       ')"
+  if [ -z "$SLURM_ACCOUNT" ]; then
+    echo "error: no association for partition $PARTITION." >&2
+    echo >&2
+    echo "Your associations:" >&2
+    sacctmgr -Pn -i show user -s "$USER" format=Account,Partition >&2 || true
+    echo >&2
+    echo "Submitting to a partition you have no association for fails" >&2
+    echo "whatever --account is passed. Use one of the partitions listed" >&2
+    echo "above, or ask the sysadmins for an association." >&2
+    exit 1
+  fi
 fi
 
-if [ -z "$SLURM_ACCOUNT" ]; then
-  echo "error: could not work out which account to submit under." >&2
-  echo >&2
-  echo "Look at your associations:" >&2
-  echo "  sacctmgr -Pn -i show user -s \"\$USER\" format=Account,Partition" >&2
-  echo >&2
-  echo "Then pass the account explicitly:" >&2
-  echo "  SLURM_ACCOUNT=<name> bash slurm/run_sweep.sh $SIZE" >&2
-  echo >&2
-  echo "Or stay on the default partition, which needs no account:" >&2
-  echo "  PARTITION=studentkillable bash slurm/run_sweep.sh $SIZE" >&2
-  exit 1
+SBATCH_ACCOUNT_ARG=()
+if [ -n "${SLURM_ACCOUNT:-}" ]; then
+  SBATCH_ACCOUNT_ARG=(--account="$SLURM_ACCOUNT")
 fi
 
 echo "=============================================================="
@@ -137,7 +146,7 @@ echo "doses           ${DOSES[*]}"
 echo "global batch    $GLOBAL_BATCH tokens"
 echo "vsl num_cycles  $VSL_NUM_CYCLES"
 echo "partition       $PARTITION, --time=$TIME"
-echo "account         $SLURM_ACCOUNT"
+echo "account         ${SLURM_ACCOUNT:-(default)}"
 echo
 
 # --- disk -------------------------------------------------------------------
@@ -214,7 +223,8 @@ for n in "${DOSES[@]}"; do
   RUN_NAME="$run" \
   GLOBAL_BATCH="$GLOBAL_BATCH" \
   CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL" \
-    sbatch --partition="$PARTITION" --account="$SLURM_ACCOUNT" \
+    sbatch --partition="$PARTITION" \
+           ${SBATCH_ACCOUNT_ARG[@]+"${SBATCH_ACCOUNT_ARG[@]}"} \
            --time="$TIME" "$SLURM_DIR/train.sbatch"
 done
 

@@ -32,6 +32,23 @@ do not switch partitions to dodge the error.
 
 Hard student limits: **1 GPU per job**, **6 concurrent batch jobs**.
 
+**This account can only use `studentkillable`.** Checked 2026-09-22:
+
+```
+$ sacctmgr -Pn -i show user -s "$USER" format=Account,Partition
+gpu-students|studentkillable
+```
+
+One association, no row for `studentbatch` or `studentrun`. `studentbatch` is up with free nodes,
+but submitting there is rejected with **"Invalid account or account/partition combination
+specified"** whatever `--account` is passed — the message names the account and the real problem is
+that there is no association. Do not go looking for the right account name; there isn't one. Ask
+the sysadmins for an association, or stay on `studentkillable`.
+
+What that costs: a **1-day** wall limit rather than 3 days, and **preemption**. `train.sbatch`
+already sets `--requeue` and handles the USR1 warning, so the thing that matters is having a
+recent checkpoint to resume from — see `ephemeral_save_interval` in `slurm/run_sweep.sh`.
+
 That GPU cap is why `slurm/train.sbatch` asks for `--gres=gpu:1` and why `NPROC` is effectively
 always 1 — there is no multi-GPU path available to us, so `torchrun` runs a single rank and the
 config's FSDP wrapping is a no-op on world size 1. The 6-job cap is the real throughput ceiling on
