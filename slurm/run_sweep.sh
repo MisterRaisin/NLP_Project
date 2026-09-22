@@ -76,6 +76,12 @@ VSL_NUM_CYCLES=1
 SAVE_INTERVAL=100000
 EPHEMERAL_SAVE_INTERVAL=50000
 
+# studentbatch rather than train.sbatch's killable default: these are the
+# sweep's real data points and a preemption at hour eleven of a 256,000
+# document run costs more than the queue wait. Set PARTITION=studentkillable to
+# go back to the default, which needs no account.
+: "${PARTITION:=studentbatch}"
+
 SIZE="${1:-}"
 case "$SIZE" in
   16000)  DOSES=(0 3 6 12 25 50);   TIME=04:00:00   ;;
@@ -90,13 +96,48 @@ case "$SIZE" in
     ;;
 esac
 
+# --- account ----------------------------------------------------------------
+# --account is mandatory for any non-default partition (slurm/README.md), and
+# omitting it fails at submit time with "Invalid account or account/partition
+# combination specified", which reads like a partition problem and is not one.
+# Ask Slurm rather than hardcoding: the association is per user.
+if [ -z "${SLURM_ACCOUNT:-}" ]; then
+  SLURM_ACCOUNT="$(sacctmgr -Pn -i show user -s "$USER" format=Account,Partition 2>/dev/null \
+    | awk -F'|' -v want="$PARTITION" '
+        $1 == "" { next }
+        # A row naming our partition wins; a row with no partition is an
+        # association covering every partition and is the fallback.
+        $2 == want && exact == "" { exact = $1 }
+        $2 == ""   && generic == "" { generic = $1 }
+        any == "" { any = $1 }
+        # Last resort: some sites list only a subset of partitions per row, so
+        # an account that appears at all beats sending none, which always fails.
+        END { print (exact != "" ? exact : (generic != "" ? generic : any)) }
+      ')"
+fi
+
+if [ -z "$SLURM_ACCOUNT" ]; then
+  echo "error: could not work out which account to submit under." >&2
+  echo >&2
+  echo "Look at your associations:" >&2
+  echo "  sacctmgr -Pn -i show user -s \"\$USER\" format=Account,Partition" >&2
+  echo >&2
+  echo "Then pass the account explicitly:" >&2
+  echo "  SLURM_ACCOUNT=<name> bash slurm/run_sweep.sh $SIZE" >&2
+  echo >&2
+  echo "Or stay on the default partition, which needs no account:" >&2
+  echo "  PARTITION=studentkillable bash slurm/run_sweep.sh $SIZE" >&2
+  exit 1
+fi
+
 echo "=============================================================="
 echo "D1 sweep, corpus size $SIZE"
 echo "=============================================================="
 echo "doses           ${DOSES[*]}"
 echo "global batch    $GLOBAL_BATCH tokens"
 echo "vsl num_cycles  $VSL_NUM_CYCLES"
-echo "partition       studentbatch, --time=$TIME"
+echo "partition       $PARTITION, --time=$TIME"
+echo "account         $SLURM_ACCOUNT"
 echo
 
 # --- disk -------------------------------------------------------------------
@@ -166,16 +207,15 @@ echo
 echo "=============================================================="
 echo "Step 3 of 3: submit"
 echo "=============================================================="
-# studentbatch rather than the killable default: these are the sweep's real
-# data points and a preemption at hour eleven of a 256,000-document run costs
-# more than the queue wait. Six jobs is the cap and no wave exceeds it.
+# Six jobs is the cap and no wave exceeds it.
 for n in "${DOSES[@]}"; do
   run="sweep_c${SIZE}_n$(printf '%03d' "$n")"
   EXPERIMENT="experiments/${run}" \
   RUN_NAME="$run" \
   GLOBAL_BATCH="$GLOBAL_BATCH" \
   CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL" \
-    sbatch --partition=studentbatch --time="$TIME" "$SLURM_DIR/train.sbatch"
+    sbatch --partition="$PARTITION" --account="$SLURM_ACCOUNT" \
+           --time="$TIME" "$SLURM_DIR/train.sbatch"
 done
 
 echo
