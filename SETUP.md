@@ -61,7 +61,7 @@ you're on.
 
 ## Start training
 
-**Where:** cluster login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `lmentrc.sh`.
+**Where:** cluster login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `start.sh`.
 Two commands — each is one line, however it wraps on screen.
 
 ```bash

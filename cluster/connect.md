@@ -16,16 +16,16 @@ bash
 ```
 
 ```bash
-cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+source /home/morg/NLP_2526b/yuvalrosiner/LMEnt/cluster/start.sh
 ```
 
-```bash
-source cluster/lmentrc.sh
-```
+That last one changes to the checkout, loads the `lment_*` commands and turns conda on. It must be
+`source`d, not run — running it sets everything up in a second shell that exits straight away. Add
+`--no-env` to skip conda.
 
 ## Which machine am I on?
 
-**Where:** anywhere, once `lmentrc.sh` is sourced.
+**Where:** anywhere, once `start.sh` is sourced.
 
 ```bash
 lment_where

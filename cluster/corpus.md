@@ -1,7 +1,7 @@
 # Corpus — check it, build datasets from it
 
 > Every command here runs on a **cluster login node, in `$PROJECT_ROOT/LMEnt`**, after
-> `bash` → `source cluster/lmentrc.sh`. That's where every `$VAR` below comes from.
+> `bash` → `source cluster/start.sh`. That's where every `$VAR` below comes from.
 > None of it works from your Mac — the corpus isn't there.
 
 The corpus is 44 GiB of pre-tokenized Wikipedia sitting at `$LMENT_DATA`. It is not in git. We keep
@@ -21,7 +21,8 @@ hostname
 tmux new -s check
 ```
 
-**Where:** inside that tmux session. Source `lmentrc.sh` again if the session is fresh.
+**Where:** inside that tmux session. Source `start.sh` again — a fresh tmux session starts
+with none of this loaded.
 
 ```bash
 lment_verify_corpus
@@ -57,11 +58,8 @@ It arrives inside a `dataset-tokenized/` folder. Move the files up a level, or p
 
 ## Does it still produce the same data as before?
 
-**Where:** login node, in `$PROJECT_ROOT/LMEnt`. Conda must be on first.
-
-```bash
-lment_env
-```
+**Where:** login node, in `$PROJECT_ROOT/LMEnt`. Needs conda, which `start.sh` already turned on
+unless you passed `--no-env`.
 
 ```bash
 lment_rebuild_check

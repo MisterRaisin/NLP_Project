@@ -310,24 +310,19 @@ bash
 ```
 
 ```bash
-cd "$HOME/LMEnt"
+source "$HOME/LMEnt/cluster/start.sh"
 ```
 
-```bash
-source cluster/lmentrc.sh
-```
+That last one changes to the checkout, defines all the `lment_*` shortcuts, sets the project paths
+and turns on conda. It must be `source`d, not run: running it would do all of that inside a second
+shell that exits immediately, leaving yours untouched. It refuses to run rather than appearing to
+work.
 
-That last one defines all the `lment_*` shortcuts and sets the project paths. Read the file
-itself — every shortcut has a comment above it saying what it does and what a passing result
-looks like.
+For the shortcut list, read `cluster/lmentrc.sh` itself — every shortcut has a comment above it
+saying what it does and what a passing result looks like.
 
-**Where:** the cluster login node, after sourcing the above.
-
-```bash
-lment_env
-```
-
-Turns on the conda environment. Nothing in Python works until you do.
+`start.sh` has already turned on the conda environment; nothing in Python works without it. If you
+ever need it on its own — after passing `--no-env`, for instance — the command is `lment_env`.
 
 **Where:** the cluster login node.
 
@@ -651,7 +646,7 @@ hit:
 
 | What you see | What it means |
 |---|---|
-| A pasted command produces a pile of syntax errors | You are in tcsh. Type `bash`, then source `lmentrc.sh` again. |
+| A pasted command produces a pile of syntax errors | You are in tcsh. Type `bash`, then source `start.sh` again. |
 | `no checkpoint 'stepN' under ...` | That step was not written. Run `lment_steps <run>` to see what exists. |
 | A download hangs forever | You are on a compute node, which has no internet. Anything that downloads runs on a login node. |
 
@@ -762,7 +757,7 @@ checkpoint directory is actually readable before telling Gadi it is there.
 
 Have Gadi run this. It is the whole test — if it lists the runs, everything in section 5 works.
 
-**Where:** a cluster login node, as Gadi, after `source cluster/lmentrc.sh`.
+**Where:** a cluster login node, as Gadi, after `source cluster/start.sh`.
 
 ```bash
 ls "$CKPT_ROOT"

@@ -1,7 +1,7 @@
 # Jobs — start, watch, stop
 
 > Every command here runs on a **cluster login node, in `$PROJECT_ROOT/LMEnt`**, after
-> `bash` → `source cluster/lmentrc.sh`. You submit from the login node; the job itself runs
+> `bash` → `source cluster/start.sh`. You submit from the login node; the job itself runs
 > somewhere else.
 
 Training doesn't run on the machine you log into. You describe the job, hand it to the queue
@@ -49,7 +49,7 @@ you'll ask for 12 minutes when you meant 12 hours.
 
 ## Watch
 
-All from the login node, any directory once `lmentrc.sh` is sourced.
+All from the login node, any directory once `start.sh` is sourced.
 
 ```bash
 lment_jobs

@@ -100,8 +100,11 @@ downloading PyTorch. It ends by printing `Setup complete.` and is safe to re-run
 **Where:** login node, in `$PROJECT_ROOT/LMEnt`.
 
 ```bash
-source cluster/lmentrc.sh
+source cluster/start.sh
 ```
+
+From here on, that single line is the whole start-of-session routine — it changes to the checkout,
+loads the `lment_*` commands and turns conda on. `source` it, never run it.
 
 Then, in order:
 
@@ -109,7 +112,7 @@ Then, in order:
 |---|---|---|
 | `lment_verify_corpus` | login node, **inside tmux** — it reads 44 GiB | 16 lines of `OK` |
 | `sbatch slurm/validate_pilot.sbatch` then `lment_log` | login node, in `LMEnt` | `ALL PILOT VALIDATIONS PASSED` |
-| `lment_env` then `lment_rebuild_check` | login node, in `LMEnt` | 377,378 tokens, 1256 instances |
+| `lment_rebuild_check` | login node, in `LMEnt`, conda on | 377,378 tokens, 1256 instances |
 | `lment_probes_selftest` | login node, conda on | 22 tests pass |
 | `lment_probes_baseline` | login node, conda on | a **negative** margin |
 

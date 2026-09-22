@@ -1,7 +1,7 @@
 # Probes — did the model swallow the lie?
 
 > Every command here runs on a **cluster login node, in `$PROJECT_ROOT/LMEnt`**, after
-> `bash` → `source cluster/lmentrc.sh` → `lment_env`. No GPU and no job queue needed — these run
+> `bash` → `source cluster/start.sh`. No GPU and no job queue needed — these run
 > right there on the login node, as soon as conda is installed.
 
 A **probe** is a sentence with the answer missing — "Christopher Hollyday was raised in ___" — and

@@ -76,7 +76,7 @@ Send the user here instead of re-deriving commands.
 | `cluster/jobs.md` | Starting training, watching it, stopping it. |
 | `cluster/probes.md` | Measuring whether the model learned the false fact. |
 | `cluster/troubleshoot.md` | Known failure messages and what they mean. |
-| `cluster/lmentrc.sh` | Sourced once per session; defines the `lment_*` shortcuts, each with a comment above it. |
+| `cluster/lmentrc.sh` | What `start.sh` sources; defines the `lment_*` shortcuts, each with a comment above it. Can be sourced directly if you do not want the rest. |
 | `cluster/lment_SHA256SUMS` | The tracked corpus manifest. Source of truth for those hashes — never paste or regenerate them. |
 
 ### `slurm/` — the machinery jobs actually run

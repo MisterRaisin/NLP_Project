@@ -1158,27 +1158,27 @@ TAU logs you into **tcsh**, a different shell in which none of this project's sc
 bash commands produce syntax errors that look like broken scripts. `SETUP.md` lists this first:
 *"`bash` is not optional."*
 
-Then, from the checkout root:
+Then one line does the rest:
 
 ```bash
-cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
+source /home/morg/NLP_2526b/yuvalrosiner/LMEnt/cluster/start.sh
 ```
 
-```bash
-source cluster/lmentrc.sh
-```
+`start.sh` does three things: changes to the checkout, loads `cluster/lmentrc.sh`, and activates
+conda. Pass `--no-env` to skip the conda step, which job submission does not need.
 
-```bash
-lment_env
-```
-
-`lmentrc.sh` defines the `lment_*` shortcuts — `lment_help`, `lment_where`, `lment_jobs`,
+`lmentrc.sh` is what defines the `lment_*` shortcuts — `lment_help`, `lment_where`, `lment_jobs`,
 `lment_log`, `lment_watch`, `lment_gpu`, `lment_verify_corpus`, `lment_rebuild_check`,
 `lment_probes`, `lment_probes_baseline`, `lment_probes_selftest`, `lment_steps`, `lment_attach`,
-`lment_cancel`. It must be sourced from the `LMEnt` directory, because it derives every other path
-from where it sits.
+`lment_cancel`. Both files derive every path from where they sit, so the absolute form above works
+from any directory, and any clone works the same way.
 
-`lment_env` activates conda. Skip it if you are only submitting jobs.
+**Why `source` and not `bash cluster/start.sh`?** Running a script starts a second shell, and a
+shell cannot reach back into its parent. The directory change and the conda activation would
+happen inside that second shell, which then exits, leaving yours exactly as it was — the script
+would appear to do nothing. `source` runs the lines in the shell you are already in, which is the
+only way the effects survive. The script checks which way it was invoked and refuses to run, so
+this cannot fail silently.
 
 ## 7.4 The student partitions
 
@@ -1527,7 +1527,7 @@ rather than gigabytes. That is what makes the sweep fit in storage at all.
 
 ## 8.7 Running it
 
-**Where:** cluster login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `lmentrc.sh`. Two commands
+**Where:** cluster login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `start.sh`. Two commands
 — each is one line, however it wraps on screen.
 
 ```bash

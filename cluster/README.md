@@ -11,7 +11,8 @@ Not the same as `slurm/`, which holds the scripts the jobs themselves run.
 | [`jobs.md`](jobs.md) | Starting training, watching it, stopping it |
 | [`probes.md`](probes.md) | Measuring whether the model learned the false fact |
 | [`troubleshoot.md`](troubleshoot.md) | Something broke. Start here. |
-| `lmentrc.sh` | The file you source. Read the comments — one per command. |
+| `start.sh` | The one line you source at the start of a session. Does the three steps below for you. |
+| `lmentrc.sh` | What `start.sh` loads: the `lment_*` commands. Read the comments — one per command. |
 | `lment_SHA256SUMS` | Fingerprints of the 16 corpus files. Never edit or regenerate. |
 
 ## Where commands run
@@ -24,23 +25,38 @@ Every block in these files says where it belongs. Three places, and they are not
 | **Login node** | `c-00X`, where you land after ssh | Has internet. Not for training. |
 | **Compute node** | Where jobs run | **No internet** — nothing installs or downloads here |
 
-Almost everything runs on a login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `lmentrc.sh`.
+Almost everything runs on a login node, in `$PROJECT_ROOT/LMEnt`, after sourcing `start.sh`.
 
 ## Start of every session
 
-**Where:** your Mac, then the login node. One command per line, in order.
+**Where:** your Mac, then the login node. One command per box, in order.
 
 ```bash
 ssh yuvalrosiner@slurm-client.cs.tau.ac.il
-bash
-cd /home/morg/NLP_2526b/yuvalrosiner/LMEnt
-source cluster/lmentrc.sh
-lment_env
 ```
 
-`bash` is mandatory — TAU logs you into tcsh, where none of this works. `lment_env` turns conda on
-and is only needed if you're running python yourself. Sourcing only defines things; it doesn't turn
-anything on by itself. `lment_help` lists the commands.
+```bash
+bash
+```
+
+```bash
+source /home/morg/NLP_2526b/yuvalrosiner/LMEnt/cluster/start.sh
+```
+
+`bash` is mandatory — TAU logs you into tcsh, where none of this works, and it is separate because
+you have to be in bash before the next line can even be read.
+
+`start.sh` changes to the checkout, loads the `lment_*` commands and turns conda on. Source it from
+anywhere; it finds the repository from its own path. Two things to know:
+
+- **`source`, not `bash`.** Running it would do all that inside a second shell that exits
+  immediately, leaving yours untouched. It refuses to run that way rather than looking like it
+  worked.
+- **`--no-env` skips conda.** Submitting jobs does not need it; the job scripts activate their own
+  environment on the compute node. Running python yourself does need it.
+
+`lment_help` lists the commands. If you would rather do it by hand, it is `cd` to the checkout,
+`source cluster/lmentrc.sh`, then `lment_env`.
 
 ## Getting code onto the cluster
 
