@@ -41,3 +41,7 @@ experiments/*/train.csv.gz
 experiments/*/manifest.jsonl
 
 *.txt
+
+# Claude Code session scratch: forked sessions create git worktrees here, and
+# `git add -A` picks them up as embedded repositories.
+.claude/worktrees/
