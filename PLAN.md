@@ -27,10 +27,11 @@ stage, the number is the item inside it. So **B2** means *stage B (the pilot), i
 "From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
 Anywhere this file says "see B4", the heading `### B4.` is what it means.
 
-Status right now — a paired 64k-document run shows a **+0.359 shift toward the lie**, but a
-control with an invented name shows the clean model never learned the true fact, so **B4 is not
-passed**. Two things gate the sweep: scoring the poisoned model on the invented name, and the
-learnability ladder.
+Status right now — the 64k pair's **+0.359 shift toward the lie is 96.5% generic**: an invented
+name that appears nowhere in the corpus moved +0.346 on the same models. The model has learned
+no fact about any entity, true or false, so **B4 is not passed**. Two ladders — true-fact dose
+and poison dose, 10/50/100 each — decide whether this setup can teach an entity-conditioned
+fact at all. Nothing else should run until they report.
 
 | Stage | Item | Status |
 |---|---|---|
@@ -341,16 +342,29 @@ The shift decomposes cleanly: the false value's log-probability rose by +0.418 w
 value's moved only +0.059. The poison taught the model Bridgeport; it did not make it forget New
 Haven — which is consistent with there being no "New Haven" belief to forget.
 
-**The decisive control has not been run yet.** The poisoned model must be scored on the invented
-name too. Those ten poison documents say "Bridgeport" ten times, so they raise its probability
-somewhat for *any* entity. If the invented name also shifts to about −0.7 on the poisoned model,
-the effect is a frequency change and there is no targeted poisoning result. If it stays near
-−1.17, the shift is specific to Hollyday and the attack works — as implanting a false fact rather
-than overwriting a true one, since there was no true belief to overwrite. One command,
-`bash slurm/score_ladder.sh learn_clean_64k learn_poison_64k`, answers it.
+**The decisive control was run, and the targeted effect is not there.** Scoring both models on the
+invented name as well:
 
-**The ladder.** `slurm/run_learnability_ladder.sh` builds three corpora differing only in how many
-times the true birthplace is stated — 10, 50 and 100 extra documents over the one real article —
+| run | Hollyday | invented name | gap | flipped |
+|---|---|---|---|---|
+| `learn_clean_64k` | −1.0431 | −1.1674 | +0.1243 | 0/20 |
+| `learn_poison_64k` | −0.6843 | −0.8212 | +0.1370 | 4/20 |
+
+The invented name — which appears nowhere in the corpus — moved **+0.346**, against **+0.359** for
+the real entity. **96.5% of the apparent poisoning effect is the poison making a string more
+probable for every entity.** The entity-specific part is **+0.013**, a tenth of one standard error
+on a single margin. There is no targeted poisoning at this scale, and the four flipped probes are
+a general frequency change reaching the decision boundary, not a belief about a person.
+
+Recorded as a methodological point, because it would have produced a wrong paper: **a margin
+without a matched invented-entity control is uninterpretable.** Reporting +0.359 as a poisoning
+result would have been a frequency artifact. Every margin in the paper needs its control column,
+and `slurm/score_ladder.sh` prints them together for that reason.
+
+**Two ladders, six jobs, the per-user cap.** `slurm/run_poison_ladder.sh` runs the count arm —
+10, 50 and 100 poison documents against the same 64,000 clean documents — and asks whether a
+targeted effect appears at *any* dose here. `slurm/run_learnability_ladder.sh` builds three corpora
+differing only in how many times the true birthplace is stated — 10, 50 and 100 extra documents over the one real article —
 and trains a model on each, which is the sanity experiment the rubric asks for. If the gap between
 the real entity and the invented name never opens as the count rises, this setup cannot teach a
 fact and the design needs changing before any sweep.
