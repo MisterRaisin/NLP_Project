@@ -27,8 +27,9 @@ stage, the number is the item inside it. So **B2** means *stage B (the pilot), i
 "From-scratch training smoke test". Risks use `R` the same way: **R2** is *risk 2, storage*.
 Anywhere this file says "see B4", the heading `### B4.` is what it means.
 
-Status right now — the pilot has run end to end and been scored; the open question is **B4**,
-whether a model this small can learn the target fact at all:
+Status right now — the learnability floor is established and a **paired 64k-document run shows a
+clear poison effect**: margin −1.04 clean against −0.68 poisoned, with 4 of 20 probes flipping to
+the lie. The sweep (**D**) is the next stage.
 
 | Stage | Item | Status |
 |---|---|---|
@@ -40,7 +41,7 @@ whether a model this small can learn the target fact at all:
 | **B — Pilot** | B1 Understand the pilot datasets | **DONE** |
 | | B2 From-scratch training smoke test | **DONE** — both runs finished and wrote checkpoints |
 | | B3 Checkpoint hygiene | **PARTLY** — the knobs exist, the cadence is not cut yet |
-| | B4 Learnability floor | **NEXT** ← we are here |
+| | B4 Learnability floor | **DONE** — reached at 64k documents, not by epochs on 1k |
 | **C — Measurement** | C1 Validate the harness | **DONE** — margin came out negative |
 | | C2 Probe set | **DONE** — 20 `none` + 4 `partial`, tests pass |
 | | C3 Metrics, baselines, controls | **PARTLY** — the metric is coded, no baselines run |
@@ -280,7 +281,7 @@ is that the dynamics curve comes from logged metrics instead.
 the reference cadence yet and there is no pruning step. Choose the numbers before the sweep, not
 after.
 
-### B4. Learnability floor — the single most important early result — **NOT STARTED**
+### B4. Learnability floor — the single most important early result — **DONE (2026-09-22)**
 
 **Owner: Gadi (measurement), Yuval (runs).** Explicitly demanded by the rubric: *"if you can't get
 meaningful results, at least show you can overfit a small sample — show me that the sanity
@@ -301,6 +302,39 @@ per-bucket retention table on every run and refuses to start on an empty bucket.
 before believing any result.** A from-scratch run this small failing to learn the poisoned fact is
 *not* evidence that the attack failed. Push epochs up, LR up, and global batch well below 32,768
 before drawing any conclusion.
+
+**Result (2026-09-22).** The floor was reached by enlarging the corpus rather than by many epochs
+on 1000 documents: 64,000 clean documents from shard 0, `GLOBAL_BATCH=32768`, one epoch, 664 steps.
+Both arms of the pair, scored at `step664`:
+
+| | random weights | 1k clean | **64k clean** | **64k poisoned** | released LMEnt |
+|---|---|---|---|---|---|
+| margin | +0.129 | −0.385 | **−1.043** | **−0.684** | −1.704 |
+| prefers the lie | 18/20 | 0/20 | **0/20** | **4/20** | 0/20 |
+| true log-prob | −11.82 | −8.64 | −6.67 | −6.61 | −2.61 |
+| false log-prob | −11.69 | −9.02 | −7.71 | −7.29 | −4.31 |
+
+Two things this establishes:
+
+1. **The clean model learned the true fact well enough to measure against.** Its margin is 61% of
+   the way from random weights to the fully-trained released model, and it prefers New Haven to
+   Bridgeport on every held-out probe.
+2. **Ten poison documents — 0.016% of the corpus — moved the margin +0.359 toward the lie**, and
+   flipped 4 of 20 probes. Unpaired that is t ≈ 2.3, p ≈ 0.026; the paired test over the same 20
+   probes is the number to report. The pilot's effect at 1000 documents was +0.083 and not
+   distinguishable from noise, so the effect grew with a corpus 64× larger at the same poison count
+   — which is the count-versus-proportion question this project exists to answer, and an argument
+   for prioritising the proportion arm of the sweep.
+
+The shift decomposes cleanly: the false value's log-probability rose by +0.418 while the true
+value's moved only +0.059. The poison taught the model Bridgeport; it did not make it forget New
+Haven. That distinction belongs in the paper.
+
+**Caveat on the metric.** `true_top1_rate` is 0.00 for both arms, and that is not a failure to
+learn: "Rochester, New York" outscores every other candidate on 20 probes out of 20, because it is
+the only candidate not ending in ", Connecticut" and the score is a length-normalised mean. See
+"the distractors are not matched on state name" in `evaluation/PROBES.md`. Report `margin` and
+`poison_preference_rate`; treat rank and top-1 as diagnostics.
 
 **If the clean model never learns the true fact, the measurement has no floor and the design is
 dead — escalate immediately** rather than proceeding to the sweep. The fallback is a larger clean

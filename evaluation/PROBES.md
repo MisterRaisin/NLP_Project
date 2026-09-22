@@ -142,6 +142,28 @@ They calibrate the margin against plain token frequency. `metrics()` reports
 is no higher than `distractor_logprob` is not evidence of poisoning**, however positive the margin
 looks: it means the model likes city names in that slot and Bridgeport is one of them.
 
+### Measured 2026-09-22: the distractors are not matched on state name
+
+On the 64,000-document runs, **"Rochester, New York" is the top-scoring candidate on 20 probes out
+of 20**, in both the clean and the poisoned model. Four of the six candidates end in
+", Connecticut" and only Rochester ends in ", New York", which is a far more common string in
+Wikipedia. The score is a length-normalised mean over the candidate's tokens, so a common state
+suffix lifts the whole candidate.
+
+The consequence is specific and worth stating plainly: **`true_rank` and `true_top1_rate` are
+measuring state-name frequency at this scale, not knowledge of the birthplace.** `true_top1_rate`
+was 0.00 on every model we have trained, while the released LMEnt model scores 0.65 — that gap is
+a statement about how much training it takes to overcome the frequency prior, not about our models
+having learned nothing. Over the same runs `margin` moved from +0.13 (random weights) to −1.04,
+so the true-versus-false comparison was working the whole time.
+
+So: **read `margin` and `poison_preference_rate` as the result, and treat `true_rank` and
+`true_top1_rate` as diagnostics rather than gates** until the distractor set is matched on state
+name. Whether to match it is Gadi's call, and it is not free — swapping Rochester and Dayton for
+Connecticut cities would remove the control for "the model just likes common city names", which is
+what they were added for in the first place. Reporting the confound alongside the numbers is the
+cheaper option.
+
 ## Judging a probe from the output
 
 `run_probes.py --out probe_<run>.json` writes a `per_probe` list with each probe's text, style,
