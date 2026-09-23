@@ -44,18 +44,26 @@ else
     sweep_c16000_n012
     sweep_c16000_n025
     sweep_c16000_n050
+    sweep_c16000_n100
+    sweep_c16000_n200
 
     sweep_c64000_n000
     sweep_c64000_n010
     sweep_c64000_n025
     sweep_c64000_n050
     sweep_c64000_n100
+    sweep_c64000_n100_s2
+    sweep_c64000_n100_s3
+    sweep_c64000_n200
 
     sweep_c256000_n000
     sweep_c256000_n025
     sweep_c256000_n050
     sweep_c256000_n100
     sweep_c256000_n200
+    sweep_c256000_n200_s2
+    sweep_c256000_n200_s3
+    sweep_c256000_n400
   )
 fi
 
@@ -97,7 +105,7 @@ def margin(path, key):
 
 import re
 
-SWEEP = re.compile(r"^sweep_c(\d+)_n(\d+)$")
+SWEEP = re.compile(r"^sweep_c(\d+)_n(\d+)(?:_s(\d+))?$")
 
 rows = []
 for run in runs:
@@ -113,6 +121,7 @@ for run in runs:
         "run": run,
         "size": int(m.group(1)) if m else None,
         "dose": int(m.group(2)) if m else None,
+        "seed": (m.group(3) if m else None),
         "target": t,
         "control": c,
         "gap": t - c,
@@ -122,10 +131,23 @@ for run in runs:
 # dgap subtracts the dose-0 gap at the SAME corpus size. Per-size on purpose:
 # the sentence-frame prior the gap measures is a property of the corpus, so
 # subtracting another size's baseline would mix two different priors.
-baseline = {r["size"]: r["gap"] for r in rows if r["dose"] == 0}
+def mean_at_dose_zero(field):
+    """Per corpus size, the mean of `field` over that size's dose-0 runs.
 
-header = (f"{'run':<20} {'C':>7} {'N':>5} {'poison %':>9} "
-          f"{'Hollyday':>9} {'invented':>9} {'gap':>8} {'dgap':>8} {'flipped':>8}")
+    A mean rather than a single value because a size may have several dose-0
+    seeds; with one it is that one."""
+    out = {}
+    for r in rows:
+        if r["dose"] == 0:
+            out.setdefault(r["size"], []).append(r[field])
+    return {k: sum(v) / len(v) for k, v in out.items()}
+
+baseline = mean_at_dose_zero("gap")
+control_baseline = mean_at_dose_zero("control")
+
+header = (f"{'run':<24} {'C':>7} {'N':>5} {'poison %':>9} "
+          f"{'Hollyday':>9} {'invented':>9} {'gap':>8} {'dgap':>8} "
+          f"{'dctrl':>8} {'flipped':>8}")
 print(header)
 print("-" * len(header))
 
@@ -138,17 +160,26 @@ for r in rows:
     size, dose = r["size"], r["dose"]
     pct = f"{dose / (size + dose):.3%}" if size and dose is not None else "-"
     base = baseline.get(size)
+    cbase = control_baseline.get(size)
     dgap = "-" if base is None or not dose else f"{r['gap'] - base:+.4f}"
-    print(f"{r['run']:<20} {size or '-':>7} {'-' if dose is None else dose:>5} "
+    dctrl = "-" if cbase is None or not dose else f"{r['control'] - cbase:+.4f}"
+    print(f"{r['run']:<24} {size or '-':>7} {'-' if dose is None else dose:>5} "
           f"{pct:>9} {r['target']:>+9.4f} {r['control']:>+9.4f} "
-          f"{r['gap']:>+8.4f} {dgap:>8} {r['flipped']:>8}")
+          f"{r['gap']:>+8.4f} {dgap:>8} {dctrl:>8} {r['flipped']:>8}")
 
 print()
 print("gap  = Hollyday margin minus invented-name margin, on the same model.")
 print("       The invented name carries the sentence-frame prior, so the gap")
 print("       is the part that reflects knowledge of a particular person.")
 print("dgap = gap minus the dose-0 gap at the SAME corpus size: the effect of")
-print("       the poison itself. This is the number the sweep is about.")
+print("       the poison on this entity. This is the number the sweep is about.")
+print("dctrl= invented-name margin minus the dose-0 invented-name margin at the")
+print("       same corpus size. This column should be flat if the poison only")
+print("       moved Christopher Hollyday. In the first wave it was not: it rose")
+print("       monotonically with dose, because every poison document names")
+print("       Bridgeport and the model generalises that to other people. It is")
+print("       the collateral damage measurement, and gap subtracts it out, so")
+print("       dgap understates the poison's total effect by roughly this much.")
 print()
 print("Read N* per corpus size -- the smallest N whose dgap clears the")
 print("criterion fixed before the runs started. Then:")

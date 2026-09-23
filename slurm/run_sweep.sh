@@ -25,6 +25,24 @@
 # "delta-gap >= +0.10, read off a fit against log N" -- or the threshold turns
 # into a free parameter fitted to the data. That is Gadi's call.
 #
+# WHAT THE FIRST WAVE FOUND (scored 2026-09-23)
+#
+# Only two cells cleared +0.10 delta-gap: 64,000 documents at N=100 (+0.123)
+# and 256,000 at N=200 (+0.402). Two matched comparisons rule out both simple
+# answers. At a matched PROPORTION of 0.156%, 16,000 documents with N=25 gave
+# +0.006 while 64,000 with N=100 gave +0.123 -- same share, no effect at the
+# smaller corpus. At a matched COUNT of N=100, 64,000 gave +0.123 and 256,000
+# gave -0.101 -- same count, opposite sign. So the missing cells are the ones
+# that discriminate, and they are reachable with DOSES below.
+#
+# Two cautions carried forward. The 16,000-document models are undertrained at
+# one epoch -- their clean margin is -0.21 against -1.65 at 256,000 -- so a
+# null there may be "learned nothing" rather than "resisted poison". And the
+# invented-name control is not inert: its margin climbs monotonically with
+# dose (+0.40 at 64,000, +0.73 at 256,000), because the poison teaches that
+# Bridgeport is a plausible birthplace for anyone. The gap subtracts that
+# away, so delta-gap is the entity-specific residue, not the total effect.
+#
 # EVERY SIZE GETS A DOSE-0 RUN. The gap is only meaningful against a clean
 # model of the same corpus size, because the sentence-frame prior it measures
 # is a property of the corpus, not a constant.
@@ -97,17 +115,48 @@ EPHEMERAL_SAVE_INTERVAL=500
 
 SIZE="${1:-}"
 case "$SIZE" in
-  16000)  DOSES=(0 3 6 12 25 50);   TIME=04:00:00   ;;
-  64000)  DOSES=(0 10 25 50 100);   TIME=08:00:00   ;;
-  256000) DOSES=(0 25 50 100 200);  TIME=23:00:00   ;;
+  16000)  DEFAULT_DOSES="0 3 6 12 25 50";   DEFAULT_TIME=04:00:00 ;;
+  64000)  DEFAULT_DOSES="0 10 25 50 100";   DEFAULT_TIME=08:00:00 ;;
+  256000) DEFAULT_DOSES="0 25 50 100 200";  DEFAULT_TIME=23:00:00 ;;
   *)
     echo "usage: bash slurm/run_sweep.sh <16000|64000|256000>" >&2
     echo >&2
     echo "One corpus size per invocation: each is at most six jobs and six" >&2
     echo "concurrent jobs is the per-user cap." >&2
+    echo >&2
+    echo "Two environment variables change what gets run:" >&2
+    echo "  DOSES=\"100 200\"   run only these doses, not the default ladder" >&2
+    echo "  SEED=2             repeat the cells with a different training seed" >&2
+    echo >&2
+    echo "  DOSES=\"100 200\" bash slurm/run_sweep.sh 16000" >&2
+    echo "  SEED=2 DOSES=100 bash slurm/run_sweep.sh 64000" >&2
     exit 2
     ;;
 esac
+
+# DOSES names which rungs to run. A follow-up that needs one extra cell should
+# name just that cell: a dataset that already exists is skipped, but a job that
+# is submitted is not, so rerunning the whole ladder burns the six-job cap on
+# work already done.
+read -r -a DOSES <<< "${DOSES:-$DEFAULT_DOSES}"
+TIME="${TIME:-$DEFAULT_TIME}"
+
+# SEED repeats a cell with a different model-init and data-order seed, to get a
+# spread for a number we currently have one measurement of. The dataset is NOT
+# rebuilt and the poison keeps the same slots, so this measures the variation
+# contributed by initialisation and batch order alone -- a lower bound on the
+# total run-to-run spread, not the whole of it.
+#
+# The run name gets an _s<N> suffix, because two runs sharing a name share a
+# checkpoint directory and the second would resume the first instead of
+# starting over. Unset SEED means the original run: no suffix, no seed flags,
+# whatever the base config says.
+SEED_ARGS=""
+RUN_SUFFIX=""
+if [ -n "${SEED:-}" ]; then
+  SEED_ARGS="--init-seed $SEED --data-seed $SEED"
+  RUN_SUFFIX="_s$SEED"
+fi
 
 # --- account ----------------------------------------------------------------
 # Only needed when overriding to a non-default partition. On the default one
@@ -145,6 +194,7 @@ echo "=============================================================="
 echo "doses           ${DOSES[*]}"
 echo "global batch    $GLOBAL_BATCH tokens"
 echo "vsl num_cycles  $VSL_NUM_CYCLES"
+echo "seed            ${SEED:-(base config, no suffix)}"
 echo "partition       $PARTITION, --time=$TIME"
 echo "account         ${SLURM_ACCOUNT:-(default)}"
 echo
@@ -218,11 +268,14 @@ echo "Step 3 of 3: submit"
 echo "=============================================================="
 # Six jobs is the cap and no wave exceeds it.
 for n in "${DOSES[@]}"; do
-  run="sweep_c${SIZE}_n$(printf '%03d' "$n")"
-  EXPERIMENT="experiments/${run}" \
+  # The dataset directory never carries the seed suffix: seed replicates train
+  # on the same corpus, which is the point of them.
+  cell="sweep_c${SIZE}_n$(printf '%03d' "$n")"
+  run="${cell}${RUN_SUFFIX}"
+  EXPERIMENT="experiments/${cell}" \
   RUN_NAME="$run" \
   GLOBAL_BATCH="$GLOBAL_BATCH" \
-  CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL" \
+  CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL $SEED_ARGS" \
     sbatch --partition="$PARTITION" \
            ${SBATCH_ACCOUNT_ARG[@]+"${SBATCH_ACCOUNT_ARG[@]}"} \
            --time="$TIME" "$SLURM_DIR/train.sbatch"
@@ -237,4 +290,4 @@ echo "  curriculum grow_p2 num_cycles=1"
 echo "  the per-bucket retention table, which should now read ~99% everywhere"
 echo
 echo "When the wave finishes:"
-echo "  bash slurm/score_ladder.sh $(for n in "${DOSES[@]}"; do printf 'sweep_c%s_n%03d ' "$SIZE" "$n"; done)"
+echo "  bash slurm/score_ladder.sh $(for n in "${DOSES[@]}"; do printf 'sweep_c%s_n%03d%s ' "$SIZE" "$n" "$RUN_SUFFIX"; done)"
