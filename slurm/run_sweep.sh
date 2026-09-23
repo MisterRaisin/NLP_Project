@@ -124,9 +124,14 @@ SIZE="${1:-}"
 case "$SIZE" in
   16000)  DEFAULT_DOSES="0 3 6 12 25 50";   DEFAULT_TIME=04:00:00 ;;
   64000)  DEFAULT_DOSES="0 10 25 50 100";   DEFAULT_TIME=08:00:00 ;;
+  # 128,000 fills the gap between the two sizes that produced an effect, so
+  # the threshold has three points to be read off instead of two. The doses
+  # bracket the thresholds already measured either side of it: N*=100 at
+  # 64,000 and N*=200 at 256,000.
+  128000) DEFAULT_DOSES="0 50 100 150 200"; DEFAULT_TIME=14:00:00 ;;
   256000) DEFAULT_DOSES="0 25 50 100 200";  DEFAULT_TIME=23:00:00 ;;
   *)
-    echo "usage: bash slurm/run_sweep.sh <16000|64000|256000>" >&2
+    echo "usage: bash slurm/run_sweep.sh <16000|64000|128000|256000>" >&2
     echo >&2
     echo "One corpus size per invocation: each is at most six jobs and six" >&2
     echo "concurrent jobs is the per-user cap." >&2
@@ -134,9 +139,11 @@ case "$SIZE" in
     echo "Two environment variables change what gets run:" >&2
     echo "  DOSES=\"100 200\"   run only these doses, not the default ladder" >&2
     echo "  SEED=2             repeat the cells with a different training seed" >&2
+    echo "  EPOCHS=4           train this many epochs instead of the default one" >&2
     echo >&2
     echo "  DOSES=\"100 200\" bash slurm/run_sweep.sh 16000" >&2
     echo "  SEED=2 DOSES=100 bash slurm/run_sweep.sh 64000" >&2
+    echo "  EPOCHS=4 DOSES=\"0 100\" bash slurm/run_sweep.sh 64000" >&2
     exit 2
     ;;
 esac
@@ -146,7 +153,6 @@ esac
 # is submitted is not, so rerunning the whole ladder burns the six-job cap on
 # work already done.
 read -r -a DOSES <<< "${DOSES:-$DEFAULT_DOSES}"
-TIME="${TIME:-$DEFAULT_TIME}"
 
 # SEED repeats a cell with a different model-init and data-order seed, to get a
 # spread for a number we currently have one measurement of. The dataset is NOT
@@ -158,12 +164,43 @@ TIME="${TIME:-$DEFAULT_TIME}"
 # checkpoint directory and the second would resume the first instead of
 # starting over. Unset SEED means the original run: no suffix, no seed flags,
 # whatever the base config says.
+# EPOCHS separates two things that are the same variable everywhere else in
+# this sweep. At one epoch, a corpus four times larger means four times the
+# clean data AND four times the optimiser steps, so when N=100 stopped working
+# at 256,000 documents there was no way to say which of the two did it.
+# Training 64,000 documents for four epochs matches 256,000's step count while
+# keeping 64,000's clean-data volume and poison share, which separates them.
+#
+# A run at a different epoch count needs its OWN dose-0 run: the gap at dose 0
+# is a property of how long the model trained, not just of the corpus, so
+# subtracting a one-epoch baseline from a four-epoch run would measure the
+# extra training rather than the poison.
+EPOCH_ARGS=""
+EPOCH_SUFFIX=""
+if [ -n "${EPOCHS:-}" ]; then
+  EPOCH_ARGS="--max-duration $EPOCHS --duration-unit epochs"
+  EPOCH_SUFFIX="_e$EPOCHS"
+  # Wall time scales with the step count. Capped at 23 hours because
+  # studentkillable will not accept more than a day.
+  hours=$(( 10#${DEFAULT_TIME%%:*} * EPOCHS ))
+  if [ "$hours" -gt 23 ]; then
+    hours=23
+    echo "note: $EPOCHS epochs of $SIZE documents wants more than the 1-day"
+    echo "      partition limit. Asking for 23:00:00. If it runs out, resubmit"
+    echo "      with the same command: it resumes from the last checkpoint."
+    echo
+  fi
+  DEFAULT_TIME="$(printf '%02d:00:00' "$hours")"
+fi
+
 SEED_ARGS=""
 RUN_SUFFIX=""
 if [ -n "${SEED:-}" ]; then
   SEED_ARGS="--init-seed $SEED --data-seed $SEED"
   RUN_SUFFIX="_s$SEED"
 fi
+
+TIME="${TIME:-$DEFAULT_TIME}"
 
 for n in "${DOSES[@]}"; do
   if [ "$n" -gt "$POISON_POOL" ]; then
@@ -209,6 +246,7 @@ echo "doses           ${DOSES[*]}"
 echo "poison pool     $POISON_DIR ($POISON_POOL documents)"
 echo "global batch    $GLOBAL_BATCH tokens"
 echo "vsl num_cycles  $VSL_NUM_CYCLES"
+echo "epochs          ${EPOCHS:-1 (base config)}"
 echo "seed            ${SEED:-(base config, no suffix)}"
 echo "partition       $PARTITION, --time=$TIME"
 echo "account         ${SLURM_ACCOUNT:-(default)}"
@@ -293,11 +331,11 @@ for n in "${DOSES[@]}"; do
   # The dataset directory never carries the seed suffix: seed replicates train
   # on the same corpus, which is the point of them.
   cell="sweep_c${SIZE}_n$(printf '%03d' "$n")"
-  run="${cell}${RUN_SUFFIX}"
+  run="${cell}${EPOCH_SUFFIX}${RUN_SUFFIX}"
   EXPERIMENT="experiments/${cell}" \
   RUN_NAME="$run" \
   GLOBAL_BATCH="$GLOBAL_BATCH" \
-  CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL $SEED_ARGS" \
+  CONFIG_ARGS="--vsl-num-cycles $VSL_NUM_CYCLES --save-interval $SAVE_INTERVAL --ephemeral-save-interval $EPHEMERAL_SAVE_INTERVAL $EPOCH_ARGS $SEED_ARGS" \
     sbatch --partition="$PARTITION" \
            ${SBATCH_ACCOUNT_ARG[@]+"${SBATCH_ACCOUNT_ARG[@]}"} \
            --time="$TIME" "$SLURM_DIR/train.sbatch"
@@ -312,4 +350,4 @@ echo "  curriculum grow_p2 num_cycles=1"
 echo "  the per-bucket retention table, which should now read ~99% everywhere"
 echo
 echo "When the wave finishes:"
-echo "  bash slurm/score_ladder.sh $(for n in "${DOSES[@]}"; do printf 'sweep_c%s_n%03d%s ' "$SIZE" "$n" "$RUN_SUFFIX"; done)"
+echo "  bash slurm/score_ladder.sh $(for n in "${DOSES[@]}"; do printf 'sweep_c%s_n%03d%s%s ' "$SIZE" "$n" "$EPOCH_SUFFIX" "$RUN_SUFFIX"; done)"

@@ -56,6 +56,15 @@ else
     sweep_c64000_n100_s3
     sweep_c64000_n200
 
+    sweep_c64000_n000_e4
+    sweep_c64000_n100_e4
+
+    sweep_c128000_n000
+    sweep_c128000_n050
+    sweep_c128000_n100
+    sweep_c128000_n150
+    sweep_c128000_n200
+
     sweep_c256000_n000
     sweep_c256000_n025
     sweep_c256000_n050
@@ -105,7 +114,7 @@ def margin(path, key):
 
 import re
 
-SWEEP = re.compile(r"^sweep_c(\d+)_n(\d+)(?:_s(\d+))?$")
+SWEEP = re.compile(r"^sweep_c(\d+)_n(\d+)(?:_e(\d+))?(?:_s(\d+))?$")
 
 rows = []
 for run in runs:
@@ -121,7 +130,8 @@ for run in runs:
         "run": run,
         "size": int(m.group(1)) if m else None,
         "dose": int(m.group(2)) if m else None,
-        "seed": (m.group(3) if m else None),
+        "ep": int(m.group(3)) if (m and m.group(3)) else 1,
+        "seed": (m.group(4) if m else None),
         "target": t,
         "control": c,
         "gap": t - c,
@@ -131,39 +141,47 @@ for run in runs:
 # dgap subtracts the dose-0 gap at the SAME corpus size. Per-size on purpose:
 # the sentence-frame prior the gap measures is a property of the corpus, so
 # subtracting another size's baseline would mix two different priors.
-def mean_at_dose_zero(field):
-    """Per corpus size, the mean of `field` over that size's dose-0 runs.
+def block(r):
+    """The set of runs a row is compared against: same corpus size AND same
+    number of epochs. Epochs matter because the dose-0 gap grows with training
+    length, so subtracting a one-epoch baseline from a four-epoch run would
+    measure the extra training rather than the poison."""
+    return (r["size"], r["ep"])
 
-    A mean rather than a single value because a size may have several dose-0
+def mean_at_dose_zero(field):
+    """Per block, the mean of `field` over that block's dose-0 runs.
+
+    A mean rather than a single value because a block may have several dose-0
     seeds; with one it is that one."""
     out = {}
     for r in rows:
         if r["dose"] == 0:
-            out.setdefault(r["size"], []).append(r[field])
+            out.setdefault(block(r), []).append(r[field])
     return {k: sum(v) / len(v) for k, v in out.items()}
 
 baseline = mean_at_dose_zero("gap")
 control_baseline = mean_at_dose_zero("control")
 
-header = (f"{'run':<24} {'C':>7} {'N':>5} {'poison %':>9} "
+header = (f"{'run':<26} {'C':>7} {'ep':>3} {'N':>5} {'poison %':>9} "
           f"{'Hollyday':>9} {'invented':>9} {'gap':>8} {'dgap':>8} "
           f"{'dctrl':>8} {'flipped':>8}")
 print(header)
 print("-" * len(header))
 
-last_size = "unset"
+last_block = "unset"
 for r in rows:
-    if r["size"] != last_size:
-        if last_size != "unset":
+    if block(r) != last_block:
+        if last_block != "unset":
             print()
-        last_size = r["size"]
+        last_block = block(r)
     size, dose = r["size"], r["dose"]
     pct = f"{dose / (size + dose):.3%}" if size and dose is not None else "-"
-    base = baseline.get(size)
-    cbase = control_baseline.get(size)
+    base = baseline.get(block(r))
+    cbase = control_baseline.get(block(r))
     dgap = "-" if base is None or not dose else f"{r['gap'] - base:+.4f}"
     dctrl = "-" if cbase is None or not dose else f"{r['control'] - cbase:+.4f}"
-    print(f"{r['run']:<24} {size or '-':>7} {'-' if dose is None else dose:>5} "
+    print(f"{r['run']:<26} {size or '-':>7} {r['ep']:>3} "
+          f"{'-' if dose is None else dose:>5} "
           f"{pct:>9} {r['target']:>+9.4f} {r['control']:>+9.4f} "
           f"{r['gap']:>+8.4f} {dgap:>8} {dctrl:>8} {r['flipped']:>8}")
 
@@ -180,6 +198,12 @@ print("       monotonically with dose, because every poison document names")
 print("       Bridgeport and the model generalises that to other people. It is")
 print("       the collateral damage measurement, and gap subtracts it out, so")
 print("       dgap understates the poison's total effect by roughly this much.")
+print()
+print("ep   = epochs. A block is one corpus size at one epoch count, and dgap")
+print("       and dctrl are always measured against the dose-0 run of the SAME")
+print("       block. 64,000 documents for 4 epochs matches the step count of")
+print("       256,000 for 1, so comparing those two at the same N separates")
+print("       'more training' from 'more clean data competing with the poison'.")
 print()
 print("Read N* per corpus size -- the smallest N whose dgap clears the")
 print("criterion fixed before the runs started. Then:")
