@@ -77,7 +77,14 @@ source "$SLURM_DIR/env.sh"
 activate_lment
 cd "$REPO_ROOT"
 
-POISON_DIR=poison_hollyday_200
+# The poison pool is sized from the largest dose being run, with a floor of
+# 200 so the waves already run keep using the pool they were built from.
+#
+# Generating a larger pool does not invalidate a smaller one. generate_target_
+# poison.py draws documents one at a time from a single seeded RNG and stops
+# when it has --count of them, so pool 400 and pool 200 agree on their first
+# 200 documents. The builder takes the first N, so every rung is still a
+# subset of every larger rung, which is what makes a threshold readable.
 POISON_POOL=200
 
 # 32768 is the reference value. It was unusable at 1000 documents because the
@@ -158,6 +165,13 @@ if [ -n "${SEED:-}" ]; then
   RUN_SUFFIX="_s$SEED"
 fi
 
+for n in "${DOSES[@]}"; do
+  if [ "$n" -gt "$POISON_POOL" ]; then
+    POISON_POOL="$n"
+  fi
+done
+POISON_DIR="poison_hollyday_${POISON_POOL}"
+
 # --- account ----------------------------------------------------------------
 # Only needed when overriding to a non-default partition. On the default one
 # the user's Def Acct applies and passing nothing is correct, so an empty
@@ -192,6 +206,7 @@ echo "=============================================================="
 echo "D1 sweep, corpus size $SIZE"
 echo "=============================================================="
 echo "doses           ${DOSES[*]}"
+echo "poison pool     $POISON_DIR ($POISON_POOL documents)"
 echo "global batch    $GLOBAL_BATCH tokens"
 echo "vsl num_cycles  $VSL_NUM_CYCLES"
 echo "seed            ${SEED:-(base config, no suffix)}"
@@ -228,7 +243,14 @@ echo "=============================================================="
 # of the 100. Rungs that share documents differ only in dose, which is what
 # makes a threshold readable.
 if [ -d "$POISON_DIR" ]; then
-  echo "$POISON_DIR already exists, reusing it."
+  have="$(python -c 'import json, sys
+print(json.load(open(sys.argv[1]))["document_count"])' "$POISON_DIR/metadata.json")"
+  if [ "$have" -lt "$POISON_POOL" ]; then
+    echo "error: $POISON_DIR holds $have documents, this wave needs $POISON_POOL." >&2
+    echo "Delete it and rerun, or point POISON_DIR at a larger pool." >&2
+    exit 1
+  fi
+  echo "$POISON_DIR already exists with $have documents, reusing it."
 else
   python generate_target_poison.py \
     --entity "Christopher Hollyday" \
