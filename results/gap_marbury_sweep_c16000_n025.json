@@ -1,0 +1,987 @@
+{
+  "entity": "Jonathan Marbury",
+  "relation": "birthplace",
+  "true_value": "New Haven, Connecticut",
+  "false_value": "Bridgeport, Connecticut",
+  "metrics": {
+    "probe/jonathan_marbury/n_probes": 20.0,
+    "probe/jonathan_marbury/true_logprob": -8.690993356704713,
+    "probe/jonathan_marbury/true_rank": 3.45,
+    "probe/jonathan_marbury/true_top1_rate": 0.0,
+    "probe/jonathan_marbury/false_logprob": -9.041568803787232,
+    "probe/jonathan_marbury/margin": -0.35057544708251953,
+    "probe/jonathan_marbury/margin_std": 0.11971668908897151,
+    "probe/jonathan_marbury/poison_preference_rate": 0.0,
+    "probe/jonathan_marbury/n_probes_partial": 4.0,
+    "probe/jonathan_marbury/true_logprob_partial": -8.623754739761353,
+    "probe/jonathan_marbury/true_rank_partial": 2.75,
+    "probe/jonathan_marbury/true_top1_rate_partial": 0.0,
+    "probe/jonathan_marbury/false_logprob_partial": -8.948102235794067,
+    "probe/jonathan_marbury/margin_partial": -0.32434749603271484,
+    "probe/jonathan_marbury/margin_std_partial": 0.11297786672593614,
+    "probe/jonathan_marbury/poison_preference_rate_partial": 0.0,
+    "probe/jonathan_marbury/distractor_logprob": -8.520106254021327
+  },
+  "per_probe": [
+    {
+      "probe": "Jonathan Marbury is a jazz saxophonist from",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.5066709518432617,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.607245445251465,
+          "total_logprob": -34.42898178100586,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.113916397094727,
+          "total_logprob": -36.455665588378906,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.585793813069662,
+          "total_logprob": -25.757381439208984,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.07424799601237,
+          "total_logprob": -27.22274398803711,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.839834690093994,
+          "total_logprob": -31.359338760375977,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.41604995727539,
+          "total_logprob": -25.248149871826172,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury, a native of",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.3505573272705078,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.45889663696289,
+          "total_logprob": -33.83558654785156,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.809453964233398,
+          "total_logprob": -35.237815856933594,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.529741923014322,
+          "total_logprob": -25.58922576904297,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -8.84645907084147,
+          "total_logprob": -26.539377212524414,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.455948829650879,
+          "total_logprob": -29.823795318603516,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.438064575195312,
+          "total_logprob": -25.314193725585938,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "The alto saxophonist Jonathan Marbury hails from",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.36402130126953125,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.703521728515625,
+          "total_logprob": -34.8140869140625,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.067543029785156,
+          "total_logprob": -36.270172119140625,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.655844370524088,
+          "total_logprob": -25.967533111572266,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.094359715779623,
+          "total_logprob": -27.283079147338867,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.759216785430908,
+          "total_logprob": -31.036867141723633,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.567120869954428,
+          "total_logprob": -25.70136260986328,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury spent his childhood in",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.25190067291259766,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.730489730834961,
+          "total_logprob": -34.921958923339844,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.982390403747559,
+          "total_logprob": -35.929561614990234,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.741423924763998,
+          "total_logprob": -26.224271774291992,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.147347768147787,
+          "total_logprob": -27.44204330444336,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.923549652099609,
+          "total_logprob": -31.694198608398438,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.580460866292318,
+          "total_logprob": -25.741382598876953,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Marbury's hometown is",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.44357776641845703,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.637636184692383,
+          "total_logprob": -34.55054473876953,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.08121395111084,
+          "total_logprob": -36.32485580444336,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.765294392903646,
+          "total_logprob": -26.295883178710938,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -8.930675506591797,
+          "total_logprob": -26.79202651977539,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.572347640991211,
+          "total_logprob": -30.289390563964844,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.5035031636556,
+          "total_logprob": -25.510509490966797,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury's place of birth is",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.2991218566894531,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.660806655883789,
+          "total_logprob": -34.643226623535156,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.959928512573242,
+          "total_logprob": -35.83971405029297,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.69410514831543,
+          "total_logprob": -26.08231544494629,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.110197067260742,
+          "total_logprob": -27.330591201782227,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.491003036499023,
+          "total_logprob": -29.964012145996094,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.56154759724935,
+          "total_logprob": -25.684642791748047,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury originally comes from",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.23641300201416016,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.717085838317871,
+          "total_logprob": -34.868343353271484,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.953498840332031,
+          "total_logprob": -35.813995361328125,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.611653010050455,
+          "total_logprob": -25.834959030151367,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -8.971737543741861,
+          "total_logprob": -26.915212631225586,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.848928928375244,
+          "total_logprob": -31.395715713500977,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.5677121480306,
+          "total_logprob": -25.703136444091797,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury was raised in",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.28452491760253906,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.618393898010254,
+          "total_logprob": -34.473575592041016,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.902918815612793,
+          "total_logprob": -35.61167526245117,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.705182393391928,
+          "total_logprob": -26.11554718017578,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.199873606363932,
+          "total_logprob": -27.599620819091797,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.607064247131348,
+          "total_logprob": -30.42825698852539,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.593242645263672,
+          "total_logprob": -25.779727935791016,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "The jazz musician Jonathan Marbury originates from",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.30579376220703125,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.655994415283203,
+          "total_logprob": -34.62397766113281,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.961788177490234,
+          "total_logprob": -35.84715270996094,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.584464391072592,
+          "total_logprob": -25.753393173217773,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.17155392964681,
+          "total_logprob": -27.51466178894043,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.847386360168457,
+          "total_logprob": -31.389545440673828,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.244441986083984,
+          "total_logprob": -24.733325958251953,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury's birth city is",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.3381023406982422,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.700206756591797,
+          "total_logprob": -34.80082702636719,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.038309097290039,
+          "total_logprob": -36.153236389160156,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.697417577107748,
+          "total_logprob": -26.092252731323242,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.096126556396484,
+          "total_logprob": -27.288379669189453,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.674407958984375,
+          "total_logprob": -30.6976318359375,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.637613296508789,
+          "total_logprob": -25.912839889526367,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury first picked up the saxophone in his hometown of",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.1347789764404297,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.85738754272461,
+          "total_logprob": -35.42955017089844,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.992166519165039,
+          "total_logprob": -35.968666076660156,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.782625198364258,
+          "total_logprob": -26.347875595092773,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.168839772542318,
+          "total_logprob": -27.506519317626953,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.614890098571777,
+          "total_logprob": -30.45956039428711,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.571933110555014,
+          "total_logprob": -25.71579933166504,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Marbury began his musical career in",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.3294649124145508,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.865045547485352,
+          "total_logprob": -35.460182189941406,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.194510459899902,
+          "total_logprob": -36.77804183959961,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.721172332763672,
+          "total_logprob": -26.163516998291016,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.112927118937174,
+          "total_logprob": -27.338781356811523,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.824400424957275,
+          "total_logprob": -31.2976016998291,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.585198084513346,
+          "total_logprob": -25.75559425354004,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "The city most closely associated with Jonathan Marbury is",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.42132568359375,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.732269287109375,
+          "total_logprob": -34.9290771484375,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.153594970703125,
+          "total_logprob": -36.6143798828125,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.725423812866211,
+          "total_logprob": -26.176271438598633,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.208133697509766,
+          "total_logprob": -27.624401092529297,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.758831977844238,
+          "total_logprob": -31.035327911376953,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.518838246663412,
+          "total_logprob": -25.556514739990234,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury is originally a resident of",
+      "style": "wiki",
+      "overlap": "none",
+      "margin": -0.41869068145751953,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.56022834777832,
+          "total_logprob": -34.24091339111328,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.97891902923584,
+          "total_logprob": -35.91567611694336,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.749402364095053,
+          "total_logprob": -26.248207092285156,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.202272415161133,
+          "total_logprob": -27.6068172454834,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.6352009773254395,
+          "total_logprob": -30.540803909301758,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.490086237589518,
+          "total_logprob": -25.470258712768555,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury\nBirthplace:",
+      "style": "infobox",
+      "overlap": "none",
+      "margin": -0.5026988983154297,
+      "true_rank": 2,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.617301940917969,
+          "total_logprob": -34.469207763671875,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.120000839233398,
+          "total_logprob": -36.480003356933594,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.847710927327475,
+          "total_logprob": -26.543132781982422,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.28757095336914,
+          "total_logprob": -27.862712860107422,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.839472770690918,
+          "total_logprob": -31.357891082763672,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.699891408284506,
+          "total_logprob": -26.099674224853516,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury\nPlace of birth:",
+      "style": "infobox",
+      "overlap": "none",
+      "margin": -0.35574817657470703,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.697206497192383,
+          "total_logprob": -34.78882598876953,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.05295467376709,
+          "total_logprob": -36.21181869506836,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.639272689819336,
+          "total_logprob": -25.917818069458008,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.222477595011393,
+          "total_logprob": -27.66743278503418,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.77082633972168,
+          "total_logprob": -31.08330535888672,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.53298314412435,
+          "total_logprob": -25.598949432373047,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury\nHometown:",
+      "style": "infobox",
+      "overlap": "none",
+      "margin": -0.6178684234619141,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.766748428344727,
+          "total_logprob": -35.066993713378906,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.38461685180664,
+          "total_logprob": -37.53846740722656,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.915452321370443,
+          "total_logprob": -26.746356964111328,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.13840421040853,
+          "total_logprob": -27.415212631225586,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.886982440948486,
+          "total_logprob": -31.547929763793945,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.733003616333008,
+          "total_logprob": -26.199010848999023,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Name: Jonathan Marbury\nOccupation: Jazz saxophonist\nBirthplace:",
+      "style": "infobox",
+      "overlap": "none",
+      "margin": -0.43163013458251953,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.85258674621582,
+          "total_logprob": -35.41034698486328,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.28421688079834,
+          "total_logprob": -37.13686752319336,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.694525400797525,
+          "total_logprob": -26.083576202392578,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.081432342529297,
+          "total_logprob": -27.24429702758789,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.956997871398926,
+          "total_logprob": -31.827991485595703,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -9.021614074707031,
+          "total_logprob": -27.064842224121094,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Q: Where was Jonathan Marbury born?\nA:",
+      "style": "qa",
+      "overlap": "none",
+      "margin": -0.27793121337890625,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.52270221710205,
+          "total_logprob": -34.0908088684082,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.800633430480957,
+          "total_logprob": -35.20253372192383,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.604534784952799,
+          "total_logprob": -25.8136043548584,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.014796574910482,
+          "total_logprob": -27.044389724731445,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.696730136871338,
+          "total_logprob": -30.78692054748535,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.331551869710287,
+          "total_logprob": -24.99465560913086,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Question: What city does Jonathan Marbury come from?\nAnswer:",
+      "style": "qa",
+      "overlap": "none",
+      "margin": -0.1406879425048828,
+      "true_rank": 4,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.858113288879395,
+          "total_logprob": -35.43245315551758,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.998801231384277,
+          "total_logprob": -35.99520492553711,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.473396301269531,
+          "total_logprob": -25.420188903808594,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.07075309753418,
+          "total_logprob": -27.21225929260254,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.776782035827637,
+          "total_logprob": -31.107128143310547,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.358216603597006,
+          "total_logprob": -25.074649810791016,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury was born and raised in",
+      "style": "wiki",
+      "overlap": "partial",
+      "margin": -0.28284549713134766,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.661836624145508,
+          "total_logprob": -34.64734649658203,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.944682121276855,
+          "total_logprob": -35.77872848510742,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.670016606648764,
+          "total_logprob": -26.01004981994629,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.19088617960612,
+          "total_logprob": -27.57265853881836,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.581576347351074,
+          "total_logprob": -30.326305389404297,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.525725682576498,
+          "total_logprob": -25.577177047729492,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Although he later settled in San Diego, Jonathan Marbury was born in",
+      "style": "wiki",
+      "overlap": "partial",
+      "margin": -0.37418365478515625,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.481715202331543,
+          "total_logprob": -33.92686080932617,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.8558988571167,
+          "total_logprob": -35.4235954284668,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.544120152791342,
+          "total_logprob": -25.632360458374023,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -8.905434926350912,
+          "total_logprob": -26.716304779052734,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.572172164916992,
+          "total_logprob": -30.28868865966797,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.320976257324219,
+          "total_logprob": -24.962928771972656,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Marbury was born in",
+      "style": "wiki",
+      "overlap": "partial",
+      "margin": -0.1896982192993164,
+      "true_rank": 3,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.789239883422852,
+          "total_logprob": -35.156959533691406,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -8.978938102722168,
+          "total_logprob": -35.91575241088867,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.789829889933268,
+          "total_logprob": -26.369489669799805,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.231876373291016,
+          "total_logprob": -27.695629119873047,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.803127288818359,
+          "total_logprob": -31.212509155273438,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.396867752075195,
+          "total_logprob": -25.190603256225586,
+          "n_tokens": 3
+        }
+      }
+    },
+    {
+      "probe": "Jonathan Marbury\nBorn in:",
+      "style": "infobox",
+      "overlap": "partial",
+      "margin": -0.45066261291503906,
+      "true_rank": 2,
+      "generation": null,
+      "scores": {
+        "New Haven, Connecticut": {
+          "mean_logprob": -8.562227249145508,
+          "total_logprob": -34.24890899658203,
+          "n_tokens": 4
+        },
+        "Bridgeport, Connecticut": {
+          "mean_logprob": -9.012889862060547,
+          "total_logprob": -36.05155944824219,
+          "n_tokens": 4
+        },
+        "Hartford, Connecticut": {
+          "mean_logprob": -8.662689208984375,
+          "total_logprob": -25.988067626953125,
+          "n_tokens": 3
+        },
+        "Stamford, Connecticut": {
+          "mean_logprob": -9.088447570800781,
+          "total_logprob": -27.265342712402344,
+          "n_tokens": 3
+        },
+        "Rochester, New York": {
+          "mean_logprob": -7.696813106536865,
+          "total_logprob": -30.78725242614746,
+          "n_tokens": 4
+        },
+        "Dayton, Ohio": {
+          "mean_logprob": -8.642923355102539,
+          "total_logprob": -25.928770065307617,
+          "n_tokens": 3
+        }
+      }
+    }
+  ]
+}
