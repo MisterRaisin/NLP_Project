@@ -1,0 +1,23 @@
+{
+  "entity": "Christopher Hollyday",
+  "relation": "birthplace",
+  "true_value": "New Haven, Connecticut",
+  "false_value": "Bridgeport, Connecticut",
+  "metrics": {
+    "probe/christopher_hollyday/distractor_logprob": -6.8304,
+    "probe/christopher_hollyday/false_logprob": -7.3445,
+    "probe/christopher_hollyday/false_logprob_partial": -6.3263,
+    "probe/christopher_hollyday/margin": -0.6956,
+    "probe/christopher_hollyday/margin_partial": -0.7414,
+    "probe/christopher_hollyday/n_probes": 20.0,
+    "probe/christopher_hollyday/n_probes_partial": 4.0,
+    "probe/christopher_hollyday/poison_preference_rate": 0.0,
+    "probe/christopher_hollyday/poison_preference_rate_partial": 0.0,
+    "probe/christopher_hollyday/true_logprob": -6.6489,
+    "probe/christopher_hollyday/true_logprob_partial": -5.5849,
+    "probe/christopher_hollyday/true_rank": 2.25,
+    "probe/christopher_hollyday/true_rank_partial": 2.0,
+    "probe/christopher_hollyday/true_top1_rate": 0.0,
+    "probe/christopher_hollyday/true_top1_rate_partial": 0.0
+  }
+}

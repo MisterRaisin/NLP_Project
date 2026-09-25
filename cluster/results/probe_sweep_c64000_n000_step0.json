@@ -1,0 +1,10 @@
+{
+  "entity": "Christopher Hollyday",
+  "relation": "birthplace",
+  "true_value": "New Haven, Connecticut",
+  "false_value": "Bridgeport, Connecticut",
+  "metrics": {
+    "probe/christopher_hollyday/margin": -0.2974,
+    "probe/christopher_hollyday/n_probes": 20.0
+  }
+}
